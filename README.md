@@ -103,7 +103,7 @@ npm test            # run tests (vitest)
 npm run dev         # run dev server, http://localhost:5173
 ```
 
-Current state: Phase 0 scaffold plus Phase 1 (Sleeper player list ingestion) done.
+Current state: Phase 0 scaffold, Phase 1 (Sleeper player list ingestion), and Phase 2 (name-matching/reconciliation tool) done.
 
 Sync Sleeper's player list into local SQLite (`backend/data/app.db`, gitignored):
 
@@ -115,6 +115,8 @@ python -m scripts.sync_sleeper_players
 **Note for future HTTP-fetching phases (ADP, ESPN, Yahoo)**: on this machine, `httpx`'s default `certifi` CA bundle fails to verify some sites (e.g. Sleeper's cert chains through a newer Google Trust Services intermediate `certifi` doesn't have yet) — unrelated to the corporate TLS-inspection proxy also present here. Fixed by using the `truststore` package to delegate verification to macOS's native trust store (same as `curl`), see `app/ingest/sleeper.py::_new_client`. Reuse this pattern for any new outbound HTTP client rather than reaching for `verify=False`.
 
 **Note on migrations**: skipped Alembic for now — a single table doesn't justify migration tooling yet. Using `Base.metadata.create_all()` on startup/sync. Revisit once the schema has multiple evolving tables (Phase 3+).
+
+Name-matching module (`app/matching/`) is standalone for now — not yet wired to a real Sheet or ADP file (that's Phase 3/4). Given a list of `{"name", "position"}` rows and a platform's player list, `resolve_rows()` returns each row's status (`auto_matched` / `needs_review` / `confirmed_no_match`) plus, for review cases, ranked candidates. Confirming a match via `confirm_mapping()` persists it so future imports skip straight to `auto_matched` for that name. Verified against the real 12k-player Sleeper dataset: suffix/punctuation cases (Jr./Sr./II/III, "D.J.") auto-match correctly, DST entries surface the right candidate for review, and made-up names correctly stay unresolved rather than being force-matched.
 
 ## Rough data model (draft)
 

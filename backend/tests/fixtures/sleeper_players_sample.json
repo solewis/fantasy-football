@@ -1,0 +1,27 @@
+{
+  "4046": {
+    "player_id": "4046",
+    "full_name": "Patrick Mahomes",
+    "first_name": "Patrick",
+    "last_name": "Mahomes",
+    "position": "QB",
+    "team": "KC"
+  },
+  "SF": {
+    "player_id": "SF",
+    "full_name": null,
+    "first_name": "San Francisco",
+    "last_name": "49ers",
+    "position": "DEF",
+    "team": "SF"
+  },
+  "9999": {
+    "player_id": "9999",
+    "full_name": "Free Agent Guy",
+    "first_name": "Free",
+    "last_name": "Guy",
+    "position": "WR",
+    "team": null
+  },
+  "0": null
+}

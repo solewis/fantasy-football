@@ -103,7 +103,18 @@ npm test            # run tests (vitest)
 npm run dev         # run dev server, http://localhost:5173
 ```
 
-Current state: both are bare scaffolds — a `/health` endpoint on the backend and a placeholder page on the frontend — each with one passing test, proving the toolchain works end to end before real features land (Phase 1+).
+Current state: Phase 0 scaffold plus Phase 1 (Sleeper player list ingestion) done.
+
+Sync Sleeper's player list into local SQLite (`backend/data/app.db`, gitignored):
+
+```
+cd backend
+python -m scripts.sync_sleeper_players
+```
+
+**Note for future HTTP-fetching phases (ADP, ESPN, Yahoo)**: on this machine, `httpx`'s default `certifi` CA bundle fails to verify some sites (e.g. Sleeper's cert chains through a newer Google Trust Services intermediate `certifi` doesn't have yet) — unrelated to the corporate TLS-inspection proxy also present here. Fixed by using the `truststore` package to delegate verification to macOS's native trust store (same as `curl`), see `app/ingest/sleeper.py::_new_client`. Reuse this pattern for any new outbound HTTP client rather than reaching for `verify=False`.
+
+**Note on migrations**: skipped Alembic for now — a single table doesn't justify migration tooling yet. Using `Base.metadata.create_all()` on startup/sync. Revisit once the schema has multiple evolving tables (Phase 3+).
 
 ## Rough data model (draft)
 

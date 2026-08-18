@@ -14,7 +14,13 @@ def make_session() -> Session:
 
 def test_upsert_inserts_new_players():
     session = make_session()
-    record = {"platform": "sleeper", "platform_player_id": "1", "name": "A B", "position": "RB", "team": "KC"}
+    record = {
+        "platform": "sleeper",
+        "platform_player_id": "1",
+        "name": "A B",
+        "position": "RB",
+        "team": "KC",
+    }
 
     count = upsert_players(session, [record])
 
@@ -24,7 +30,13 @@ def test_upsert_inserts_new_players():
 
 def test_upsert_is_idempotent_and_updates_in_place():
     session = make_session()
-    record = {"platform": "sleeper", "platform_player_id": "1", "name": "A B", "position": "RB", "team": "KC"}
+    record = {
+        "platform": "sleeper",
+        "platform_player_id": "1",
+        "name": "A B",
+        "position": "RB",
+        "team": "KC",
+    }
     upsert_players(session, [record])
 
     upsert_players(session, [dict(record, team="DEN")])
@@ -35,8 +47,20 @@ def test_upsert_is_idempotent_and_updates_in_place():
 
 def test_upsert_keeps_same_id_players_on_different_platforms_distinct():
     session = make_session()
-    sleeper_record = {"platform": "sleeper", "platform_player_id": "1", "name": "A B", "position": "RB", "team": "KC"}
-    espn_record = {"platform": "espn", "platform_player_id": "1", "name": "C D", "position": "WR", "team": "SF"}
+    sleeper_record = {
+        "platform": "sleeper",
+        "platform_player_id": "1",
+        "name": "A B",
+        "position": "RB",
+        "team": "KC",
+    }
+    espn_record = {
+        "platform": "espn",
+        "platform_player_id": "1",
+        "name": "C D",
+        "position": "WR",
+        "team": "SF",
+    }
 
     upsert_players(session, [sleeper_record, espn_record])
 

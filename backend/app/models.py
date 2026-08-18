@@ -8,7 +8,9 @@ class PlatformPlayer(Base):
     """A platform's own player list — canonical player identity within a league on that platform."""
 
     __tablename__ = "platform_players"
-    __table_args__ = (UniqueConstraint("platform", "platform_player_id", name="uq_platform_player"),)
+    __table_args__ = (
+        UniqueConstraint("platform", "platform_player_id", name="uq_platform_player"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     platform: Mapped[str] = mapped_column(String, index=True)

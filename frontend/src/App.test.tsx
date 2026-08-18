@@ -7,6 +7,8 @@ describe('App', () => {
   it('renders the app heading', () => {
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: 'Fantasy Draft Assistant' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Fantasy Draft Assistant' }),
+    ).toBeInTheDocument()
   })
 })

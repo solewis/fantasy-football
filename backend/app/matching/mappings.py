@@ -3,7 +3,9 @@ from sqlalchemy.orm import Session
 from app.models import NameMapping
 
 
-def get_mapping(session: Session, platform: str, source_type: str, normalized_name: str) -> NameMapping | None:
+def get_mapping(
+    session: Session, platform: str, source_type: str, normalized_name: str
+) -> NameMapping | None:
     return (
         session.query(NameMapping)
         .filter_by(platform=platform, source_type=source_type, normalized_name=normalized_name)

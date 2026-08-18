@@ -83,6 +83,10 @@ Manual entry is always available as a fallback, regardless of platform.
 - **Backend**: Python + FastAPI — chosen over Express so rank aggregation/outlier math can lean on pandas, and as a chance to rebuild Python skills in a practical context
 - **Storage**: SQLite (local file, no server to manage)
 
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR: backend (`ruff check`, `ruff format --check`, `pytest`) and frontend (`oxlint`, `prettier --check`, `tsc --noEmit`, `vitest`) as separate jobs. Free tier easily covers a personal project's usage.
+
 ## Getting started (Phase 0 scaffold)
 
 Backend (FastAPI, Python 3.12 via a pyenv virtualenv named `fantasy-draft-app` — `backend/.python-version` pins it):

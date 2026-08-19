@@ -131,6 +131,27 @@ def test_get_status_reflects_live_counts_and_recorded_timestamps(monkeypatch):
     assert status["adp"]["last_synced_at"] is not None
 
 
+def test_get_status_returns_timezone_aware_timestamps(monkeypatch):
+    """Regression test: SQLite drops tzinfo on the round-trip, so a naive
+    datetime read back from the DB must be reattached as UTC here -- otherwise
+    the frontend's Date parser silently misreads it as local time, making a
+    past sync look like it's hours in the future.
+
+    `expire_all()` forces a real reload from the DB rather than returning the
+    still-tz-aware in-memory object from the session's identity map, which is
+    what actually happens between separate API requests in production (each
+    gets its own session).
+    """
+    session = make_session()
+    monkeypatch.setattr(sync_service.sleeper, "sync", fake_sleeper_sync(1))
+    sync_service.sync_players(session)
+    session.expire_all()
+
+    status = sync_service.get_status(session, "2026")
+
+    assert status["players"]["last_synced_at"].tzinfo is not None
+
+
 def test_get_status_does_not_leak_adp_status_across_seasons(monkeypatch):
     session = make_session()
     monkeypatch.setattr(sync_service.sleeper_adp, "sync", fake_sleeper_adp_sync(4))

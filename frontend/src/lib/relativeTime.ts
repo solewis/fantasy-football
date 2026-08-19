@@ -23,3 +23,11 @@ export function formatRelativeTime(
   }
   return 'Just now'
 }
+
+/** Exact local date/time, for a hover tooltip alongside the relative label above. */
+export function formatExactDateTime(
+  isoTimestamp: string | null,
+): string | undefined {
+  if (!isoTimestamp) return undefined
+  return new Date(isoTimestamp).toLocaleString()
+}

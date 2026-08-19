@@ -6,7 +6,7 @@ import {
   triggerPlayersSync,
   type SyncStatus,
 } from '../../api/sync'
-import { formatRelativeTime } from '../../lib/relativeTime'
+import { formatExactDateTime, formatRelativeTime } from '../../lib/relativeTime'
 import './sync-panel.css'
 
 interface SyncPanelProps {
@@ -71,7 +71,14 @@ export function SyncPanel({ season, onSyncComplete }: SyncPanelProps) {
     <div className="sync-panel">
       <div className="sync-row">
         <span className="sync-label">Players</span>
-        <span className="sync-meta">
+        <span
+          className="sync-meta"
+          title={
+            status
+              ? formatExactDateTime(status.players.last_synced_at)
+              : undefined
+          }
+        >
           {status
             ? `${formatRelativeTime(status.players.last_synced_at)} · ${status.players.record_count} players`
             : '—'}
@@ -86,7 +93,12 @@ export function SyncPanel({ season, onSyncComplete }: SyncPanelProps) {
       </div>
       <div className="sync-row">
         <span className="sync-label">ADP ({season})</span>
-        <span className="sync-meta">
+        <span
+          className="sync-meta"
+          title={
+            status ? formatExactDateTime(status.adp.last_synced_at) : undefined
+          }
+        >
           {status
             ? `${formatRelativeTime(status.adp.last_synced_at)} · ${status.adp.record_count} rows`
             : '—'}

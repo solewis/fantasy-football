@@ -10,6 +10,21 @@ PLAYERS_SYNC_TYPE = "sleeper_players"
 ADP_SYNC_TYPE = "sleeper_adp"
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Reattach UTC tzinfo to a naive datetime.
+
+    SQLite drops tzinfo on the round-trip through the DB (it has no native
+    timezone-aware column type), so a value we stored as tz-aware UTC comes
+    back naive. Every datetime this module writes is UTC by construction
+    (`datetime.now(UTC)`), so it's always correct to reattach it here rather
+    than leave the API to serialize an ambiguous, offset-less timestamp that
+    JS's `Date` parser would otherwise silently misread as local time.
+    """
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
+
+
 def _record_sync(session: Session, sync_type: str, season: str | None) -> datetime:
     now = datetime.now(UTC)
     existing = session.query(SyncStatus).filter_by(sync_type=sync_type, season=season).one_or_none()
@@ -46,12 +61,12 @@ def get_status(session: Session, season: str) -> dict:
 
     return {
         "players": {
-            "last_synced_at": players_status.last_synced_at if players_status else None,
+            "last_synced_at": _as_utc(players_status.last_synced_at if players_status else None),
             "record_count": players_count,
         },
         "adp": {
             "season": season,
-            "last_synced_at": adp_status.last_synced_at if adp_status else None,
+            "last_synced_at": _as_utc(adp_status.last_synced_at if adp_status else None),
             "record_count": adp_count,
         },
     }

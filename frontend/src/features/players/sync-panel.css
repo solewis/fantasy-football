@@ -23,6 +23,7 @@
 
 .sync-meta {
   color: var(--text-secondary);
+  cursor: help;
 }
 
 .sync-row button {

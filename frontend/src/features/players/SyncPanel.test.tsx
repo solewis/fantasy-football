@@ -29,8 +29,14 @@ describe('SyncPanel', () => {
 
     render(<SyncPanel season="2026" onSyncComplete={vi.fn()} />)
 
-    expect(await screen.findByText(/12221 players/)).toBeInTheDocument()
+    const playersMeta = await screen.findByText(/12221 players/)
+    expect(playersMeta).toBeInTheDocument()
     expect(screen.getByText(/6799 rows/)).toBeInTheDocument()
+
+    // Hover tooltip carries the exact timestamp -- regression coverage for the
+    // "says 6 hours in the future" bug (a naive/offset-less datetime from the
+    // backend gets misread as local time by the browser).
+    expect(playersMeta.title).toContain('2026')
   })
 
   it('triggers a players sync and calls onSyncComplete on success', async () => {

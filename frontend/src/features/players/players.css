@@ -1,0 +1,163 @@
+/*
+ * Position colors: QB/RB/WR/TE/K/DEF from the dataviz skill's default
+ * categorical palette (first 6 of 8, in documented order), validated on the
+ * adjacent CVD pairlist -- the best guarantee achievable for 6 unfoldable
+ * categories (the palette's own docs cap all-pairs guarantees at 3). Identity
+ * is never color-alone: the position abbreviation text is always shown too.
+ */
+.position-tag[data-position='QB'] {
+  --position-color: #2a78d6;
+}
+.position-tag[data-position='RB'] {
+  --position-color: #eb6834;
+}
+.position-tag[data-position='WR'] {
+  --position-color: #1baf7a;
+}
+.position-tag[data-position='TE'] {
+  --position-color: #eda100;
+}
+.position-tag[data-position='K'] {
+  --position-color: #e87ba4;
+}
+.position-tag[data-position='DEF'] {
+  --position-color: #008300;
+}
+
+@media (prefers-color-scheme: dark) {
+  .position-tag[data-position='QB'] {
+    --position-color: #3987e5;
+  }
+  .position-tag[data-position='RB'] {
+    --position-color: #d95926;
+  }
+  .position-tag[data-position='WR'] {
+    --position-color: #199e70;
+  }
+  .position-tag[data-position='TE'] {
+    --position-color: #c98500;
+  }
+  .position-tag[data-position='K'] {
+    --position-color: #d55181;
+  }
+}
+
+.position-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 2px 6px;
+  margin-right: 8px;
+  border-radius: 4px;
+  background: var(--position-color, #6b6b6b);
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.players-page {
+  padding: 20px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.players-toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.players-search,
+.players-format {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.players-search {
+  flex: 1 1 240px;
+}
+
+.position-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.position-tab {
+  font: inherit;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.position-tab.active {
+  background: var(--text-primary);
+  color: var(--surface-page);
+  border-color: var(--text-primary);
+}
+
+.players-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.players-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.players-table th,
+.players-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.players-table th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.players-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.players-table tbody tr:hover {
+  background: var(--surface-1);
+}
+
+.player-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.players-status,
+.players-error {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.players-error {
+  color: #d03b3b;
+}

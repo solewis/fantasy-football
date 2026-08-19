@@ -107,7 +107,7 @@ npm test            # run tests (vitest)
 npm run dev         # run dev server, http://localhost:5173
 ```
 
-Current state: Phase 0 scaffold, Phase 1 (Sleeper player list ingestion), Phase 2 (name-matching/reconciliation tool), and Phase 4 (Sleeper ADP ingestion) done. Phase 3 (rankings Sheet import) is intentionally on hold for now.
+Current state: Phase 0 scaffold, Phase 1 (Sleeper player list ingestion), Phase 2 (name-matching/reconciliation tool), Phase 4 (Sleeper ADP ingestion), and a players management panel (frontend, ahead of the Phase 5 draft view) done. Phase 3 (rankings Sheet import) is intentionally on hold for now.
 
 Sync Sleeper's player list and ADP into local SQLite (`backend/data/app.db`, gitignored):
 
@@ -117,6 +117,8 @@ python -m scripts.sync_sleeper_players
 python -m scripts.sync_sleeper_adp 2026    # season defaults to 2026 if omitted
 ```
 
+Then, with both dev servers running (see below), open http://localhost:5173 to browse the players/ADP table (position tabs, search, scoring-format dropdown).
+
 **Note for future HTTP-fetching phases (ADP, ESPN, Yahoo)**: on this machine, `httpx`'s default `certifi` CA bundle fails to verify some sites (e.g. Sleeper's cert chains through a newer Google Trust Services intermediate `certifi` doesn't have yet) — unrelated to the corporate TLS-inspection proxy also present here. Fixed by using the `truststore` package to delegate verification to macOS's native trust store (same as `curl`), see `app/ingest/sleeper.py::_new_client`. Reuse this pattern for any new outbound HTTP client rather than reaching for `verify=False`.
 
 **Note on migrations**: skipped Alembic for now — a single table doesn't justify migration tooling yet. Using `Base.metadata.create_all()` on startup/sync. Revisit once the schema has multiple evolving tables (Phase 3+).
@@ -124,6 +126,8 @@ python -m scripts.sync_sleeper_adp 2026    # season defaults to 2026 if omitted
 Name-matching module (`app/matching/`) is standalone for now — not yet wired to a real Sheet (that's Phase 3, on hold). Given a list of `{"name", "position"}` rows and a platform's player list, `resolve_rows()` returns each row's status (`auto_matched` / `needs_review` / `confirmed_no_match`) plus, for review cases, ranked candidates. Confirming a match via `confirm_mapping()` persists it so future imports skip straight to `auto_matched` for that name. Verified against the real 12k-player Sleeper dataset: suffix/punctuation cases (Jr./Sr./II/III, "D.J.") auto-match correctly, DST entries surface the right candidate for review, and made-up names correctly stay unresolved rather than being force-matched.
 
 **ADP ingestion** (`app/ingest/sleeper_adp.py`) pulls from `api.sleeper.com/projections/nfl/{season}` — an undocumented endpoint (not part of Sleeper's published `api.sleeper.app` docs), found by testing the URL directly rather than via any official reference, so treat it as more fragile than the player-list endpoint: it could change or disappear without notice. Each projection row carries several `adp_<format>` stats (`std`, `ppr`, `half_ppr`, `2qb`, `dynasty_*`, `idp_*`); Sleeper uses `999`/`999.0` as a sentinel for "not applicable in this format" (e.g. `adp_rookie` on a veteran) rather than omitting the key, so those are filtered out in `parse_adp_entries`. No name-matching needed here — rows are already keyed to Sleeper's own `player_id`. Verified against live 2026 season data: 6,799 real ADP rows synced, spot-checked against Josh Allen's values across all formats, idempotent on re-run.
+
+**Players management panel** (frontend, built ahead of Phase 5 as a data-review tool): `GET /players` (`app/api/players.py` + `app/players.py`) joins `PlatformPlayer`/`AdpEntry` and returns players ranked by ADP for a given platform/season/format, with optional position/search filters — only players with a real ADP entry for the selected format are included. The React page (`src/features/players/`) renders this as a table with position tabs (All/QB/RB/WR/TE/K/DEF), a free-text search box (debounced), and a scoring-format dropdown, loosely modeled on a reference draft-tool UI the user liked. Columns are intentionally scoped to what current data supports (rank, ADP, name, position, team) — auction value/VORP/pick-availability-% columns from the reference are deferred until the data/math behind them exists (the last one is literally Phase 7). Position colors use the dataviz skill's default categorical palette (first 6 of 8 hues, validated on the adjacent-CVD pairlist — the documented ceiling for 6 unfoldable categories is 3-slot all-pairs guarantees, so this is the best achievable rather than a perfect solve); the position abbreviation is always shown as text too, so identity is never color-alone. Verified against live data in the browser: filtering, search, and format switching all work correctly against the real 2026 dataset.
 
 ## Rough data model (draft)
 
@@ -175,8 +179,12 @@ The normalize → exact-match → fuzzy-match → manual-review → persist pipe
 Originally planned as an ADP CSV (e.g. FantasyPros) run through the Phase 2 reconciliation pipeline. Turned out unnecessary: Sleeper's own (undocumented) projections endpoint (`api.sleeper.com/projections/nfl/{season}`) returns ADP across std/PPR/half-PPR/2QB/dynasty/IDP formats, already keyed to Sleeper's `player_id` — no CSV, no name-matching. Landed in `AdpEntry`.
 *Done*: fetch/parse/upsert pipeline, tested against fixtures (multi-format extraction, `999` sentinel filtering, missing-data rows), verified against live 2026 data (6,799 rows), idempotent re-sync confirmed.
 
+**Players management panel** ✅ done (built ahead of schedule, as groundwork for Phase 5)
+First real frontend page: `GET /players` endpoint plus a React table (position tabs, search, format dropdown) over `PlatformPlayer`/`AdpEntry`, modeled loosely on a reference draft-tool UI. Rank/ADP/name/position/team only — no tiers (Phase 3 on hold), no auction value/VORP/pick-availability-% (need data/math this project doesn't have yet).
+*Done*: 8 backend tests (query + API) + 7 frontend tests, all passing; verified live in-browser against real 2026 Sleeper data (filtering, search, format switching all correct).
+
 **Phase 5 — Draft view (core feature), manual pick entry**
-By-position and overall tiered views, undrafted-only filtering, ADP value/reach indicator — driven by manually marking picks (no live sync yet), so this phase is testable without a real draft running.
+By-position and overall tiered views, undrafted-only filtering, ADP value/reach indicator — driven by manually marking picks (no live sync yet), so this phase is testable without a real draft running. Builds directly on the players management panel above (same table/filtering foundation, plus tiers once Phase 3 resumes, plus draft-state awareness).
 *Done when*: backend calc functions (ADP delta, filtering) are unit tested, and a manual walkthrough of a mock draft produces correct, live-updating views.
 
 **Phase 6 — Sleeper live sync**

@@ -1,7 +1,18 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) }),
+  )
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('App', () => {
   it('renders the app heading', () => {

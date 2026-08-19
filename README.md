@@ -147,7 +147,9 @@ npm test            # run tests (vitest)
 npm run dev         # run dev server, http://localhost:5173
 ```
 
-Current state: Phase 0 scaffold, Phase 1 (Sleeper player list ingestion), Phase 2 (name-matching/reconciliation tool), Phase 4 (Sleeper ADP ingestion), and a players management panel with in-UI data sync (frontend, ahead of the Phase 5 draft view) done. Phase 3 (rankings Sheet import) is intentionally on hold for now.
+Current state: Phase 0 scaffold, Phase 1 (Sleeper player list ingestion), Phase 2 (name-matching/reconciliation tool), Phase 3's in-app path (drag-and-drop rankings builder), Phase 4 (Sleeper ADP ingestion), the players management panel with in-UI data sync, and Phases 5+8 (the draft view — board, player pool, queue, roster) all done. Phase 3's Sheet-upload path, Phase 6 (live Sleeper sync), and Phase 7 (availability-at-next-pick) are what's left.
+
+Three tabs in the app: **Players** (browse/sync the full player+ADP list), **Rankings** (build your own rank order), **Draft** (run an actual draft — board, player pool, queue, roster).
 
 Sync Sleeper's player list and ADP into local SQLite (`backend/data/app.db`, gitignored) — either from the terminal:
 
@@ -185,6 +187,18 @@ There's also a **Move** column with ▲/▼ buttons per row, as a precise fallba
 
 A real bug surfaced while verifying this live in the browser (not caught by the component tests): `handleDrop` originally read the dragged player's id from React *state*, captured in a closure. Component tests passed because Testing Library's `fireEvent` forces a synchronous flush between events, but a genuine rapid `dragstart` → `drop` sequence in the real browser can fire before React re-renders — so the drop handler's closure still saw the *previous* render's (stale) value, silently no-opping the reorder. Fixed by tracking the dragged id in a `ref` (updated synchronously, no render dependency) for the actual drop logic, keeping state only for the "currently dragging" CSS highlight. Worth remembering for any future drag-and-drop: don't trust component tests alone here, since `act()`-wrapped test events can mask exactly this kind of real-world timing bug — verify live drag interactions in an actual browser too.
 
+**Draft view** (`app/draft_logic.py`, `app/draft.py`, `app/api/draft.py`, `Draft`/`DraftPick`/`DraftQueueEntry` models, `src/features/draft/`): the combined Phase 5 + Phase 8, manual-entry-only for now (no live Sleeper sync — that's Phase 6). Loosely modeled on Sleeper's own draft room, per a reference screenshot: a rounds × teams board on top, a ranked/position-filterable player pool bottom-left, and Queue/Roster tabs bottom-right.
+
+- **Setup**: a small form (season/format/number of teams/number of rounds/your draft slot) creates a new draft session — no `League` concept exists yet, so this is deliberately a fresh form each time rather than tied to a saved league.
+- **Snake math** (`pick_to_round_and_slot`, `round_and_slot_to_pick`, `total_picks`) is pure and thoroughly tested (33 tests, including a parametrized round-trip check across many team/round counts) — `round`/`slot` are never stored on `DraftPick`, always derived from `pick_number` so there's nothing to keep in sync.
+- **Picks are always sequential**: `POST /drafts/{id}/picks` doesn't take a pick number — it's always "the next one" — matching how an actual draft happens (one pick at a time, in order), and rejects an already-picked player or a picking-past-the-end draft (`DraftError` → HTTP 400). `DELETE` undoes the most recent pick, a safety net for mis-clicks.
+- **Player pool**: reuses the exact same "your saved ranks, or ADP order if none yet" fallback the Rankings builder established (factored out to `fetchRankedOrAdpFallback`, shared by both), filtered client-side to hide already-drafted players — no separate "available players" endpoint needed.
+- **Queue**: scoped *per draft* (not global like `MyRank`), since a draft-day shortlist is inherently tied to one specific board. Drafting a queued player automatically removes them from the queue server-side. Reordering reuses `reorderList()` via simple up/down buttons only (no full drag-and-drop here — a smaller, lower-stakes list where buttons are perfectly adequate, deliberately trading full drag support for less risk/time given Rankings already has it).
+- **Roster**: your own picks (`pick.slot === draft.my_slot`), grouped by position — simple grouping, no enforced starting-lineup slots (e.g. exact "2 RB/2 WR/1 FLEX" counts), since that needs real roster-settings data this project doesn't have yet.
+- **Self-healing on a stale draft**: the active draft id is persisted to `localStorage` (so an accidental page refresh mid-draft doesn't lose your place) — but if that id no longer resolves (e.g. the draft was deleted), the page quietly clears it and falls back to the setup form instead of stranding you on a dead-end error screen. Found this gap by literally hitting it during verification: deleted a smoke-test draft from the DB, reloaded, and got stuck on an error page with no way back — fixed before considering the phase done.
+
+*Done*: 33 (snake math) + 14 (draft service) + 7 (draft API) new backend tests, 29 new frontend tests across setup form/board/pool/queue/roster/page-integration, all passing. Verified live end-to-end in the browser with a real mock draft: picks update the board and advance turn order correctly, undo works, queueing/drafting from the queue works, the roster groups correctly, and — critically — reloading the page mid-draft resumes exactly where it left off.
+
 ## Rough data model (draft)
 
 - `League` — platform, platform_league_id, scoring format, roster settings, connection config
@@ -193,8 +207,9 @@ A real bug surfaced while verifying this live in the browser (not caught by the 
 - `MyRank` — (platform, season, format, platform_player_id, rank) — your saved rank order. Scoped like `AdpEntry` (platform/season/format) rather than to a `League`, since leagues aren't modeled yet and a league's actual rank set is just whichever format matches its scoring settings. No tiers yet. Built via the in-app drag-and-drop rankings builder (seeded from ADP, no `NameMapping` needed); a Sheet-based upload is a separate, still-deferred path onto this same table
 - `AdpEntry` — (platform, platform_player_id, season, format, adp) — from Sleeper's projections endpoint, no `NameMapping` needed (already keyed to platform player IDs)
 - `SyncStatus` — (sync_type, season, last_synced_at) — one upserted row per sync type; record counts are always computed live from the tables above, never cached here
-- `Draft` — league, platform draft ID (if synced), draft order, status
-- `DraftPick` — draft, pick number, platform_player_id, team/roster
+- `Draft` — (platform ["manual" for now], platform_draft_id [null until Phase 6 sync], season, format, num_teams, num_rounds, my_slot, created_at) — a local draft session, not yet tied to a `League` (doesn't exist yet)
+- `DraftPick` — (draft_id, pick_number, platform_player_id) — `round`/`slot` deliberately not stored, always derived from `pick_number` via the snake-order math in `app/draft_logic.py`
+- `DraftQueueEntry` — (draft_id, platform_player_id, order) — your draft-day shortlist, scoped per draft (not global like `MyRank`)
 
 ## Open questions
 
@@ -242,20 +257,20 @@ Originally planned as an ADP CSV (e.g. FantasyPros) run through the Phase 2 reco
 First real frontend page: `GET /players` endpoint plus a React table (position tabs, search, format dropdown) over `PlatformPlayer`/`AdpEntry`, modeled loosely on a reference draft-tool UI. Rank/ADP/name/position/team only — no tiers (Phase 3 on hold), no auction value/VORP/pick-availability-% (need data/math this project doesn't have yet). Position/search filtering was moved client-side shortly after the initial build (see "Getting started" above) since the backend already returns the full unpaginated set per format. Extended with a **data sync panel**: `SyncStatus` model + `app/sync_service.py` + `/sync/*` endpoints let both players and ADP be re-imported from the UI itself (with a "last synced" timestamp and live record count), sharing the exact same sync logic the CLI scripts use.
 *Done*: 58 backend tests + 16 frontend tests, all passing; verified live in-browser against real 2026 Sleeper data — filtering, search, format switching, and both sync buttons (a real live re-fetch from Sleeper, triggered from the UI) all confirmed working.
 
-**Phase 5 — Draft view (core feature), manual pick entry**
-By-position and overall tiered views, undrafted-only filtering, ADP value/reach indicator — driven by manually marking picks (no live sync yet), so this phase is testable without a real draft running. Builds directly on the players management panel above (same table/filtering foundation, plus tiers once Phase 3 resumes, plus draft-state awareness).
-*Done when*: backend calc functions (ADP delta, filtering) are unit tested, and a manual walkthrough of a mock draft produces correct, live-updating views.
+**Phase 5 — Draft view (core feature), manual pick entry** ✅ done, combined with Phase 8
+Undrafted-only player pool with position filtering, manual pick marking — see the "Draft view" writeup above for the full breakdown. No tiers yet (Phase 3's Sheet-upload half is still on hold) and no ADP value/reach indicator column yet (noted as a follow-on below).
+*Done*: see the Draft view writeup above for exact test counts and what was verified live.
 
 **Phase 6 — Sleeper live sync**
 Replace manual pick entry with live polling of Sleeper's draft-picks endpoint (reusing the approach proven in `draft-tool/sleeper-rerun.py`). Note: for a Sleeper league, picks arrive already keyed by Sleeper's own player ID, so no name-matching is needed here — reconciliation only matters for Sheet ranks and ADP.
 *Done when*: polling logic is unit tested against fixture pick responses, and a real (or simulated) Sleeper draft updates the draft view live.
 
 **Phase 7 — Availability-at-next-pick estimate**
-Add the "will this player be there at my next pick" heuristic on top of the now-live draft view.
+Add the "will this player be there at my next pick" heuristic on top of the now-live draft view. Also where an ADP value/reach column (current pick vs. a player's ADP) most naturally belongs, if not added sooner.
 *Done when*: the calculation is a pure, unit-tested function, and it visibly tracks reality reasonably well during a manual test run.
 
-**Phase 8 — Draft board (all teams/rosters) visual**
-Grid of teams × filled roster slots.
-*Done when*: the board accurately reflects roster state through a full mock draft.
+**Phase 8 — Draft board (all teams/rosters) visual** ✅ done, combined with Phase 5
+Grid of teams × filled roster slots — see the "Draft view" writeup above.
+*Done*: see the Draft view writeup above.
 
 **Phase 9+ — Stretch**: multi-league support (per-league Sheets/settings), ESPN integration, Yahoo OAuth integration.

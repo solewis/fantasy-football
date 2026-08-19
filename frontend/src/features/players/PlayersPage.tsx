@@ -1,24 +1,15 @@
 import { useEffect, useState } from 'react'
 
 import { fetchPlayers, type PlayerRow } from '../../api/players'
+import {
+  FORMATS,
+  POSITIONS,
+  SEASON,
+  type PositionFilter,
+} from '../../lib/formats'
 import { PositionTag } from './PositionTag'
 import { SyncPanel } from './SyncPanel'
 import './players.css'
-
-const POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF'] as const
-type PositionFilter = (typeof POSITIONS)[number]
-
-const FORMATS = [
-  { value: 'std', label: 'Standard' },
-  { value: 'ppr', label: 'PPR' },
-  { value: 'half_ppr', label: 'Half PPR' },
-  { value: '2qb', label: '2QB / Superflex' },
-  { value: 'dynasty_std', label: 'Dynasty (Std)' },
-  { value: 'dynasty_ppr', label: 'Dynasty (PPR)' },
-  { value: 'dynasty_half_ppr', label: 'Dynasty (Half PPR)' },
-] as const
-
-const SEASON = '2026'
 
 export function PlayersPage() {
   const [position, setPosition] = useState<PositionFilter>('ALL')

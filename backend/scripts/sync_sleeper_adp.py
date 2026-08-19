@@ -6,7 +6,7 @@ Usage: python -m scripts.sync_sleeper_adp [season]  (run from backend/, default 
 import sys
 
 from app.db import Base, SessionLocal, engine
-from app.ingest import sleeper_adp
+from app.sync_service import sync_adp
 
 DEFAULT_SEASON = "2026"
 
@@ -16,8 +16,8 @@ def main() -> None:
 
     Base.metadata.create_all(engine)
     with SessionLocal() as session:
-        count = sleeper_adp.sync(session, season)
-    print(f"Synced {count} ADP entries for season {season}")
+        result = sync_adp(session, season)
+    print(f"Synced {result['record_count']} ADP entries for season {season}")
 
 
 if __name__ == "__main__":

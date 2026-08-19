@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { fetchPlayers, type PlayerRow } from '../../api/players'
 import { PositionTag } from './PositionTag'
+import { SyncPanel } from './SyncPanel'
 import './players.css'
 
 const POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF'] as const
@@ -30,6 +31,7 @@ export function PlayersPage() {
   const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [refreshNonce, setRefreshNonce] = useState(0)
 
   function selectFormat(next: string) {
     setLoading(true)
@@ -56,7 +58,7 @@ export function PlayersPage() {
     return () => {
       cancelled = true
     }
-  }, [format])
+  }, [format, refreshNonce])
 
   const searchTerm = search.trim().toLowerCase()
   const players = allPlayers.filter((row) => {
@@ -67,6 +69,11 @@ export function PlayersPage() {
 
   return (
     <div className="players-page">
+      <SyncPanel
+        season={SEASON}
+        onSyncComplete={() => setRefreshNonce((n) => n + 1)}
+      />
+
       <div className="players-toolbar">
         <input
           className="players-search"

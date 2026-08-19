@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { DraftStatus } from '../../api/draft'
@@ -77,14 +77,5 @@ describe('DraftBoard', () => {
 
     const currentCell = screen.getByText('2.3').closest('td')
     expect(currentCell).toHaveClass('current')
-  })
-
-  it('marks the row direction alternating for snake order', () => {
-    render(<DraftBoard status={makeStatus()} />)
-
-    const rows = screen.getAllByRole('row')
-    // rows[0] is the header; round 1 -> →, round 2 -> ←
-    expect(within(rows[1]).getByText('→')).toBeInTheDocument()
-    expect(within(rows[2]).getByText('←')).toBeInTheDocument()
   })
 })

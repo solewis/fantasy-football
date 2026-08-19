@@ -22,7 +22,6 @@ export function DraftBoard({ status }: DraftBoardProps) {
       <table className="draft-board">
         <thead>
           <tr>
-            <th className="draft-board-round-label" aria-hidden="true" />
             {slots.map((slot) => (
               <th
                 key={slot}
@@ -36,12 +35,6 @@ export function DraftBoard({ status }: DraftBoardProps) {
         <tbody>
           {rounds.map((round) => (
             <tr key={round}>
-              <td className="draft-board-round-label">
-                {round}
-                <span className="draft-board-arrow">
-                  {round % 2 === 1 ? '→' : '←'}
-                </span>
-              </td>
               {slots.map((slot) => {
                 const pick = picksByCell.get(`${round}-${slot}`)
                 const isCurrent =

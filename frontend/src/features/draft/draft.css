@@ -69,7 +69,7 @@
 .draft-board th,
 .draft-board td {
   border: 1px solid var(--border);
-  padding: 6px 8px;
+  padding: 14px 8px;
   font-size: 12px;
   white-space: nowrap;
   min-width: 96px;
@@ -80,20 +80,11 @@
   color: var(--text-secondary);
   font-weight: 600;
   text-align: left;
+  padding: 6px 8px;
 }
 
 .draft-board th.my-team {
   color: var(--text-primary);
-}
-
-.draft-board-round-label {
-  color: var(--text-muted);
-  min-width: 32px;
-  width: 32px;
-}
-
-.draft-board-arrow {
-  margin-left: 4px;
 }
 
 .draft-board-cell.my-team {

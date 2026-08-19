@@ -49,7 +49,7 @@ Building/aggregating ranks in-app is deferred — doing this in Google Sheets in
 ## Data sources & known challenges
 
 - **Your ranks/tiers**: Google Sheet, imported via `gspread` (see Deferred section above).
-- **ADP**: not available from Sleeper/ESPN/Yahoo APIs — needs an external source (e.g. FantasyPros CSV export).
+- **ADP**: Sleeper's (undocumented) projections endpoint (`api.sleeper.com/projections/nfl/{season}`) returns ADP alongside projections, already keyed to Sleeper's own player IDs, across std/PPR/half-PPR/2QB/dynasty/IDP formats — no external CSV source or name-matching needed. See "Player name matching" and Phase 4 below for the caveat (it's undocumented and could change).
 - **Platform rank**: not obviously exposed by these APIs either (needs more digging per-platform — may require scraping their public rankings pages). Lower priority now that draft view leans on your Sheet ranks + ADP.
 - **Rank scoping**: rankings/tiers need to vary by scoring format/roster settings, so the data model should key rankings off "format" (e.g. PPR/Superflex/Standard) rather than assuming one global rank list.
 - **Availability-at-next-pick math**: needs a defined methodology — start simple (ADP vs. picks remaining before your turn) and note as an open question whether it's worth modeling further.
@@ -58,14 +58,14 @@ Building/aggregating ranks in-app is deferred — doing this in Google Sheets in
 
 Decision: **no universal cross-platform player table for v1.** Since each league lives on exactly one platform, that platform's own player list (e.g. Sleeper's `/v1/players/nfl`) is the canonical set of players for that league — every pick, rank, and ADP row for that league ultimately resolves to that platform's player ID. This sidesteps needing a Sleeper/ESPN/Yahoo crosswalk entirely for now.
 
-What's left is a narrower, but real, problem: your rank Sheet and an ADP CSV both use free-text names typed by humans, which won't always match the platform's name exactly (suffixes like Jr./Sr./II/III, "D.J." vs "DJ", defense entries like "49ers D/ST" vs "San Francisco", accented characters, nicknames). Both imports need the same fix, so build it once as a shared **reconciliation tool**, not two bespoke import scripts:
+What's left is a narrower, but real, problem: your rank Sheet uses free-text names typed by humans, which won't always match the platform's name exactly (suffixes like Jr./Sr./II/III, "D.J." vs "DJ", defense entries like "49ers D/ST" vs "San Francisco", accented characters, nicknames). Fix it once as a shared **reconciliation tool**, not a one-off script:
 
 1. **Normalize** both sides (lowercase, strip punctuation/suffixes/whitespace) and try an exact match on the normalized key first — this alone should resolve the large majority of names.
 2. **Fuzzy match** whatever's left (e.g. `rapidfuzz`) against the platform's player list, using position (and team, if available) as a tie-breaker, producing a ranked list of candidates with a confidence score.
 3. **Manual review** for anything below a confidence threshold or with multiple close candidates — a small review screen (or even just a CLI list to start) showing the source name next to its candidates so you pick the right one or mark "no match."
 4. **Persist confirmed mappings** keyed by (platform, normalized source name) so once a name is resolved, every future import (next week, next season) auto-resolves it instantly — only genuinely new names (rookies, typos, new sources) need review each time.
 
-This same pipeline is reused verbatim for ADP import — same normalize → fuzzy-match → review → persist steps, just a different source file and a different destination table (`AdpEntry` instead of `MyRank`). Building it as one general tool (source rows in, platform player list in, mapping out) rather than two one-off scripts is a deliberate early investment since it's the highest-risk part of the whole app.
+**ADP turned out not to need this tool.** The original plan was an ADP CSV (e.g. FantasyPros) needing the same name-matching as the Sheet. Instead, Sleeper's own (undocumented) projections endpoint returns ADP already keyed to Sleeper's `player_id` — see Phase 4 below. So for now the reconciliation tool has exactly one real consumer (the rank Sheet, Phase 3, currently on hold); it's still built as a standalone module rather than baked into the Sheet importer, since a second source (a different platform's ranks, a different ADP source if Sleeper's endpoint disappears) is plausible enough to be worth the separation.
 
 ## Platform integration plan
 
@@ -107,20 +107,23 @@ npm test            # run tests (vitest)
 npm run dev         # run dev server, http://localhost:5173
 ```
 
-Current state: Phase 0 scaffold, Phase 1 (Sleeper player list ingestion), and Phase 2 (name-matching/reconciliation tool) done.
+Current state: Phase 0 scaffold, Phase 1 (Sleeper player list ingestion), Phase 2 (name-matching/reconciliation tool), and Phase 4 (Sleeper ADP ingestion) done. Phase 3 (rankings Sheet import) is intentionally on hold for now.
 
-Sync Sleeper's player list into local SQLite (`backend/data/app.db`, gitignored):
+Sync Sleeper's player list and ADP into local SQLite (`backend/data/app.db`, gitignored):
 
 ```
 cd backend
 python -m scripts.sync_sleeper_players
+python -m scripts.sync_sleeper_adp 2026    # season defaults to 2026 if omitted
 ```
 
 **Note for future HTTP-fetching phases (ADP, ESPN, Yahoo)**: on this machine, `httpx`'s default `certifi` CA bundle fails to verify some sites (e.g. Sleeper's cert chains through a newer Google Trust Services intermediate `certifi` doesn't have yet) — unrelated to the corporate TLS-inspection proxy also present here. Fixed by using the `truststore` package to delegate verification to macOS's native trust store (same as `curl`), see `app/ingest/sleeper.py::_new_client`. Reuse this pattern for any new outbound HTTP client rather than reaching for `verify=False`.
 
 **Note on migrations**: skipped Alembic for now — a single table doesn't justify migration tooling yet. Using `Base.metadata.create_all()` on startup/sync. Revisit once the schema has multiple evolving tables (Phase 3+).
 
-Name-matching module (`app/matching/`) is standalone for now — not yet wired to a real Sheet or ADP file (that's Phase 3/4). Given a list of `{"name", "position"}` rows and a platform's player list, `resolve_rows()` returns each row's status (`auto_matched` / `needs_review` / `confirmed_no_match`) plus, for review cases, ranked candidates. Confirming a match via `confirm_mapping()` persists it so future imports skip straight to `auto_matched` for that name. Verified against the real 12k-player Sleeper dataset: suffix/punctuation cases (Jr./Sr./II/III, "D.J.") auto-match correctly, DST entries surface the right candidate for review, and made-up names correctly stay unresolved rather than being force-matched.
+Name-matching module (`app/matching/`) is standalone for now — not yet wired to a real Sheet (that's Phase 3, on hold). Given a list of `{"name", "position"}` rows and a platform's player list, `resolve_rows()` returns each row's status (`auto_matched` / `needs_review` / `confirmed_no_match`) plus, for review cases, ranked candidates. Confirming a match via `confirm_mapping()` persists it so future imports skip straight to `auto_matched` for that name. Verified against the real 12k-player Sleeper dataset: suffix/punctuation cases (Jr./Sr./II/III, "D.J.") auto-match correctly, DST entries surface the right candidate for review, and made-up names correctly stay unresolved rather than being force-matched.
+
+**ADP ingestion** (`app/ingest/sleeper_adp.py`) pulls from `api.sleeper.com/projections/nfl/{season}` — an undocumented endpoint (not part of Sleeper's published `api.sleeper.app` docs), found by testing the URL directly rather than via any official reference, so treat it as more fragile than the player-list endpoint: it could change or disappear without notice. Each projection row carries several `adp_<format>` stats (`std`, `ppr`, `half_ppr`, `2qb`, `dynasty_*`, `idp_*`); Sleeper uses `999`/`999.0` as a sentinel for "not applicable in this format" (e.g. `adp_rookie` on a veteran) rather than omitting the key, so those are filtered out in `parse_adp_entries`. No name-matching needed here — rows are already keyed to Sleeper's own `player_id`. Verified against live 2026 season data: 6,799 real ADP rows synced, spot-checked against Josh Allen's values across all formats, idempotent on re-run.
 
 ## Rough data model (draft)
 
@@ -128,14 +131,15 @@ Name-matching module (`app/matching/`) is standalone for now — not yet wired t
 - `PlatformPlayer` — cached copy of a platform's own player list (platform, platform_player_id, name, position, team) — the canonical player identity *within that league's platform*
 - `NameMapping` — (platform, source_type [`sheet_rank` / `adp`], source_name_raw, normalized_name, platform_player_id, confirmed_by_user) — the persisted output of the reconciliation tool, reused on every future import
 - `MyRank` — (league, platform_player_id, position, overall_rank, tier) — imported from your Google Sheet, resolved through `NameMapping`
-- `AdpEntry` — (platform, platform_player_id, format, adp) — from external source (e.g. FantasyPros), resolved through `NameMapping`
+- `AdpEntry` — (platform, platform_player_id, season, format, adp) — from Sleeper's projections endpoint, no `NameMapping` needed (already keyed to platform player IDs)
 - `Draft` — league, platform draft ID (if synced), draft order, status
 - `DraftPick` — draft, pick number, platform_player_id, team/roster
 
 ## Open questions
 
 - What's the actual availability-at-next-pick formula — simple ADP-vs-picks-remaining heuristic, or something more involved?
-- Exact Sheet layout/columns for the rank/tier import (one tab per league-format? one tab with a format column?)
+- Exact Sheet layout/columns for the rank/tier import (one tab per league-format? one tab with a format column?) — on hold along with Phase 3 itself.
+- Which `adp_*` format(s) map to which of your 3 leagues' actual settings (std/ppr/half_ppr/2qb/dynasty variants)?
 - Where do we source "platform rank" per site, if we still want it later — scraping vs. is there an easier API path?
 - Do the 3 leagues actually differ enough in format that they need distinct rank sets, or do some share one (e.g. two are both "12-team PPR")?
 - How/where to store Yahoo OAuth tokens and ESPN cookies securely and locally (e.g. `.env`, gitignored config file)?
@@ -163,13 +167,13 @@ Fetch and cache a platform's player list (Sleeper first) into `PlatformPlayer`.
 The normalize → exact-match → fuzzy-match → manual-review → persist pipeline described above, built as a standalone reusable module (not tied to Sheets or ADP yet).
 *Done when*: a solid unit test suite covers the tricky cases (Jr./Sr./II/III, punctuation, D/ST entries, ambiguous fuzzy matches), and confirmed mappings are proven to be skipped on re-run.
 
-**Phase 3 — Rankings import (Google Sheets)**
+**Phase 3 — Rankings import (Google Sheets)** — *on hold*
 `gspread` read of your rank Sheet, fed through the Phase 2 pipeline, landing in `MyRank`.
 *Done when*: importing a real league's Sheet resolves cleanly (or clearly flags what needs manual review), with tests covering the import-and-resolve flow against a fixture Sheet payload.
 
-**Phase 4 — ADP import**
-Same Phase 2 pipeline, pointed at an ADP CSV (e.g. FantasyPros export) instead of a Sheet, landing in `AdpEntry`.
-*Done when*: an ADP file imports and resolves the same way, proving the reconciliation tool is genuinely shared rather than duplicated.
+**Phase 4 — ADP import** ✅ done (built ahead of Phase 3, which is on hold)
+Originally planned as an ADP CSV (e.g. FantasyPros) run through the Phase 2 reconciliation pipeline. Turned out unnecessary: Sleeper's own (undocumented) projections endpoint (`api.sleeper.com/projections/nfl/{season}`) returns ADP across std/PPR/half-PPR/2QB/dynasty/IDP formats, already keyed to Sleeper's `player_id` — no CSV, no name-matching. Landed in `AdpEntry`.
+*Done*: fetch/parse/upsert pipeline, tested against fixtures (multi-format extraction, `999` sentinel filtering, missing-data rows), verified against live 2026 data (6,799 rows), idempotent re-sync confirmed.
 
 **Phase 5 — Draft view (core feature), manual pick entry**
 By-position and overall tiered views, undrafted-only filtering, ADP value/reach indicator — driven by manually marking picks (no live sync yet), so this phase is testable without a real draft running.

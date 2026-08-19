@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, String, UniqueConstraint
+from sqlalchemy import Boolean, Float, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -40,3 +40,24 @@ class NameMapping(Base):
     # None = confirmed as "no match" (e.g. a name that isn't a real fantasy-relevant player)
     platform_player_id: Mapped[str | None] = mapped_column(String, nullable=True)
     confirmed: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class AdpEntry(Base):
+    """ADP for a platform player, in a given season and scoring format.
+
+    Sourced from Sleeper's (undocumented) projections endpoint, which already
+    keys ADP to Sleeper's own player_id — no name-matching needed for this one,
+    unlike the Sheet-based ranks.
+    """
+
+    __tablename__ = "adp_entries"
+    __table_args__ = (
+        UniqueConstraint("platform", "platform_player_id", "season", "format", name="uq_adp_entry"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String, index=True)
+    platform_player_id: Mapped[str] = mapped_column(String, index=True)
+    season: Mapped[str] = mapped_column(String, index=True)
+    format: Mapped[str] = mapped_column(String)  # e.g. "std", "ppr", "half_ppr", "dynasty_ppr"
+    adp: Mapped[float] = mapped_column(Float)

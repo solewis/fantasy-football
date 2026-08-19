@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.players import router as players_router
+from app.api.ranks import router as ranks_router
 from app.api.sync import router as sync_router
 from app.db import Base, engine
 
@@ -15,12 +16,13 @@ app = FastAPI(title="Fantasy Draft Assistant")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
 app.include_router(players_router)
 app.include_router(sync_router)
+app.include_router(ranks_router)
 
 
 @app.get("/health")

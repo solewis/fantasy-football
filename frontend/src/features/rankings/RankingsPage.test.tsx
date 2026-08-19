@@ -53,6 +53,18 @@ function jsonResponse(body: unknown) {
   return { ok: true, json: () => Promise.resolve(body) }
 }
 
+/** jsdom's DragEvent doesn't implement `clientY` at all (comes back
+ * `undefined`, not 0), so `fireEvent.dragOver(el, { clientY })` silently has
+ * no effect. Force it through via a raw Event + defineProperty instead. */
+function dragOverAt(el: Element, clientY: number) {
+  const event = new Event('dragover', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'clientY', {
+    value: clientY,
+    configurable: true,
+  })
+  fireEvent(el, event)
+}
+
 /** Routes by URL/method: GET /ranks, GET /players, PUT /ranks. */
 function mockFetch({
   ranks = [],
@@ -108,41 +120,75 @@ describe('RankingsPage', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('reorders on drag and drop between two rows', async () => {
+  it('reorders live during drag, before any drop event fires', async () => {
     mockFetch({ ranks: savedRanks })
     render(<RankingsPage />)
     await screen.findByText('Bijan Robinson')
 
     const rowsBefore = screen.getAllByRole('row')
-    const draggedRow = rowsBefore[1] // Bijan, currently rank 1
-    const targetRow = rowsBefore[2] // Chase, currently rank 2
+    const bijanRow = rowsBefore[1] // rank 1
+    const chaseRow = rowsBefore[2] // rank 2
 
-    fireEvent.dragStart(draggedRow)
-    fireEvent.dragOver(targetRow)
-    fireEvent.drop(targetRow)
+    fireEvent.dragStart(bijanRow)
+    // jsdom's getBoundingClientRect is all zeros, so any clientY > 0 reads as
+    // "past the row's vertical midpoint" -- i.e. the bottom half.
+    dragOverAt(chaseRow, 1)
 
-    // Dropping Bijan onto Chase (the row right after it) is order-unchanged,
-    // so drag Chase onto the end-zone instead to prove reordering works.
-    const rowsAfterNoOp = screen.getAllByRole('row')
+    const rowsDuringDrag = screen.getAllByRole('row')
     expect(
-      within(rowsAfterNoOp[1]).getByText('Bijan Robinson'),
+      within(rowsDuringDrag[1]).getByText("Ja'Marr Chase"),
+    ).toBeInTheDocument()
+    expect(
+      within(rowsDuringDrag[2]).getByText('Bijan Robinson'),
     ).toBeInTheDocument()
 
-    const chaseRow = rowsAfterNoOp[2]
-    const endZone = rowsAfterNoOp[rowsAfterNoOp.length - 1]
-    fireEvent.dragStart(chaseRow)
-    fireEvent.dragOver(endZone)
-    fireEvent.drop(endZone)
+    fireEvent.drop(chaseRow)
+    fireEvent.dragEnd(bijanRow)
 
-    await waitFor(() => {
-      const rowsAfter = screen.getAllByRole('row')
-      expect(
-        within(rowsAfter[1]).getByText('Bijan Robinson'),
-      ).toBeInTheDocument()
-      expect(
-        within(rowsAfter[2]).getByText("Ja'Marr Chase"),
-      ).toBeInTheDocument()
-    })
+    const rowsAfter = screen.getAllByRole('row')
+    expect(within(rowsAfter[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
+    expect(within(rowsAfter[2]).getByText('Bijan Robinson')).toBeInTheDocument()
+  })
+
+  it('hovering the very next row’s top half does not move it (regression: moving one spot down)', async () => {
+    mockFetch({ ranks: savedRanks })
+    render(<RankingsPage />)
+    await screen.findByText('Bijan Robinson')
+
+    const rowsBefore = screen.getAllByRole('row')
+    const bijanRow = rowsBefore[1]
+    const chaseRow = rowsBefore[2]
+
+    fireEvent.dragStart(bijanRow)
+    dragOverAt(chaseRow, 0) // top half -- should stay put
+
+    const rowsStillUnchanged = screen.getAllByRole('row')
+    expect(
+      within(rowsStillUnchanged[1]).getByText('Bijan Robinson'),
+    ).toBeInTheDocument()
+
+    dragOverAt(chaseRow, 1) // bottom half -- now it moves
+
+    const rowsMoved = screen.getAllByRole('row')
+    expect(within(rowsMoved[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
+    expect(within(rowsMoved[2]).getByText('Bijan Robinson')).toBeInTheDocument()
+  })
+
+  it('dragging over the end zone moves the item to the end', async () => {
+    mockFetch({ ranks: savedRanks })
+    render(<RankingsPage />)
+    await screen.findByText('Bijan Robinson')
+
+    const rowsBefore = screen.getAllByRole('row')
+    const bijanRow = rowsBefore[1]
+    const endZone = rowsBefore[rowsBefore.length - 1]
+
+    fireEvent.dragStart(bijanRow)
+    fireEvent.dragOver(endZone)
+
+    const rowsAfter = screen.getAllByRole('row')
+    expect(within(rowsAfter[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
+    expect(within(rowsAfter[2]).getByText('Bijan Robinson')).toBeInTheDocument()
   })
 
   it('Load from ADP replaces the working list', async () => {

@@ -2,34 +2,56 @@ interface Identifiable {
   platform_player_id: string
 }
 
-/** Moves `draggedId` to sit just before `targetId` (or to the very end, if
- * `targetId` is null -- "insert before some id" can't otherwise express
- * "last position"), preserving everything else's relative order. Pure and
- * DOM-free so it's cheap to test thoroughly on its own -- the drag-and-drop
- * UI is a thin wrapper around it. */
+/** Whether `clientY` sits past the vertical midpoint of a rect (top/height
+ * from `getBoundingClientRect()`) -- i.e. the cursor is over the bottom half
+ * of the hovered row. A tiny pure seam so this arithmetic is directly
+ * testable with plain numbers, without needing a real DOM measurement or a
+ * `DragEvent.clientY` (which jsdom doesn't actually implement). */
+export function isBelowMidpoint(
+  clientY: number,
+  rect: { top: number; height: number },
+): boolean {
+  return clientY - rect.top > rect.height / 2
+}
+
+/**
+ * Computes where `draggedId` would land if dropped right now, given which
+ * row the cursor is over (`hoveredId`, or null for the "move to end" zone)
+ * and whether the cursor is past that row's vertical midpoint (`insertAfter`).
+ *
+ * Meant to be called on every `dragover`, not just on drop, so the list
+ * reorders live as you drag. The before/after split is also what makes
+ * moving exactly one spot possible: dropping in a row's top half is a no-op
+ * relative to that row (you're already right before it), so without a
+ * bottom-half case there'd be no way to land just past the very next row.
+ *
+ * Pure and DOM-free -- the drag-and-drop UI (reading cursor position off the
+ * DOM) is a thin wrapper around this.
+ */
 export function reorderList<T extends Identifiable>(
   list: T[],
   draggedId: string,
-  targetId: string | null,
+  hoveredId: string | null,
+  insertAfter = false,
 ): T[] {
-  const draggedIndex = list.findIndex(
+  const fromIndex = list.findIndex(
     (item) => item.platform_player_id === draggedId,
   )
-  if (draggedIndex === -1 || draggedId === targetId) return list
+  if (fromIndex === -1 || draggedId === hoveredId) return list
 
   const next = [...list]
-  const [dragged] = next.splice(draggedIndex, 1)
+  const [dragged] = next.splice(fromIndex, 1)
 
-  if (targetId === null) {
+  if (hoveredId === null) {
     next.push(dragged)
     return next
   }
 
-  const insertAt = next.findIndex(
-    (item) => item.platform_player_id === targetId,
+  const hoveredIndex = next.findIndex(
+    (item) => item.platform_player_id === hoveredId,
   )
-  if (insertAt === -1) return list
+  if (hoveredIndex === -1) return list
 
-  next.splice(insertAt, 0, dragged)
+  next.splice(insertAfter ? hoveredIndex + 1 : hoveredIndex, 0, dragged)
   return next
 }

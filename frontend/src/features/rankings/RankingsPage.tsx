@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { fetchPlayers } from '../../api/players'
 import { fetchRanks, saveRanks, type RankRow } from '../../api/ranks'
 import { PositionTag } from '../players/PositionTag'
-import { reorderList } from './reorder'
+import { isBelowMidpoint, reorderList } from './reorder'
 import './rankings.css'
 
 const FORMATS = [
@@ -30,11 +30,14 @@ export function RankingsPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
   // State drives the "dragging" CSS highlight (fine to be a render behind);
-  // the ref is what handleDrop actually reads, since a dragstart -> drop pair
-  // can fire before React flushes the state update from dragstart, and a
-  // stale closure there would silently drop the reorder.
+  // the ref is what dragover/drop actually read, since those DOM events can
+  // fire before React flushes a state update, and a stale closure there
+  // would silently drop the reorder.
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const draggedIdRef = useRef<string | null>(null)
+  // Skips redundant reorders (and re-renders) while the cursor sits still
+  // within the same half of the same row -- dragover fires continuously.
+  const lastHoverKeyRef = useRef<string | null>(null)
 
   function selectFormat(next: string) {
     setLoading(true)
@@ -107,21 +110,28 @@ export function RankingsPage() {
 
   function startDrag(id: string) {
     draggedIdRef.current = id
+    lastHoverKeyRef.current = null
     setDraggedId(id)
   }
 
   function endDrag() {
     draggedIdRef.current = null
+    lastHoverKeyRef.current = null
     setDraggedId(null)
   }
 
-  function handleDrop(targetId: string | null) {
+  /** Reorders live as the cursor moves -- called on every dragover, not just
+   * on drop. `hoveredId` null means "the move-to-end zone". */
+  function handleDragOver(hoveredId: string | null, insertAfter: boolean) {
     const dragged = draggedIdRef.current
-    if (dragged) {
-      setWorkingList((prev) => reorderList(prev, dragged, targetId))
-      setSaveMessage(null)
-    }
-    endDrag()
+    if (!dragged || dragged === hoveredId) return
+
+    const key = `${hoveredId ?? ''}:${insertAfter}`
+    if (key === lastHoverKeyRef.current) return
+    lastHoverKeyRef.current = key
+
+    setWorkingList((prev) => reorderList(prev, dragged, hoveredId, insertAfter))
+    setSaveMessage(null)
   }
 
   return (
@@ -191,10 +201,15 @@ export function RankingsPage() {
                   }
                   onDragStart={() => startDrag(row.platform_player_id)}
                   onDragEnd={endDrag}
-                  onDragOver={(e) => e.preventDefault()}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const insertAfter = isBelowMidpoint(e.clientY, rect)
+                    handleDragOver(row.platform_player_id, insertAfter)
+                  }}
                   onDrop={(e) => {
                     e.preventDefault()
-                    handleDrop(row.platform_player_id)
+                    endDrag()
                   }}
                 >
                   <td>{index + 1}</td>
@@ -208,10 +223,13 @@ export function RankingsPage() {
               ))}
               <tr
                 className="rankings-end-zone"
-                onDragOver={(e) => e.preventDefault()}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  handleDragOver(null, false)
+                }}
                 onDrop={(e) => {
                   e.preventDefault()
-                  handleDrop(null)
+                  endDrag()
                 }}
               >
                 <td colSpan={4}>Drop here to move to the end</td>

@@ -9,6 +9,7 @@ __pycache__/
 *.sqlite3
 .env
 service-account*.json
+backend/data/*.json
 
 # OS
 .DS_Store

@@ -18,56 +18,31 @@ const FORMATS = [
 ] as const
 
 const SEASON = '2026'
-const SEARCH_DEBOUNCE_MS = 300
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value)
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs)
-    return () => clearTimeout(timer)
-  }, [value, delayMs])
-
-  return debounced
-}
 
 export function PlayersPage() {
   const [position, setPosition] = useState<PositionFilter>('ALL')
   const [format, setFormat] = useState<string>('half_ppr')
-  const [searchInput, setSearchInput] = useState('')
-  const search = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS)
+  const [search, setSearch] = useState('')
 
-  const [players, setPlayers] = useState<PlayerRow[]>([])
+  // Fetched once per format -- position/search are filtered client-side below,
+  // since the backend already returns the full unpaginated set for a format
+  // and re-hitting the network on every keystroke/tab click has no benefit.
+  const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  function selectPosition(next: PositionFilter) {
-    setLoading(true)
-    setPosition(next)
-  }
 
   function selectFormat(next: string) {
     setLoading(true)
     setFormat(next)
   }
 
-  function updateSearchInput(next: string) {
-    setLoading(true)
-    setSearchInput(next)
-  }
-
   useEffect(() => {
     let cancelled = false
 
-    fetchPlayers({
-      season: SEASON,
-      format,
-      position: position === 'ALL' ? undefined : position,
-      search: search || undefined,
-    })
+    fetchPlayers({ season: SEASON, format })
       .then((rows) => {
         if (cancelled) return
-        setPlayers(rows)
+        setAllPlayers(rows)
         setError(null)
       })
       .catch((err: unknown) => {
@@ -81,7 +56,14 @@ export function PlayersPage() {
     return () => {
       cancelled = true
     }
-  }, [position, format, search])
+  }, [format])
+
+  const searchTerm = search.trim().toLowerCase()
+  const players = allPlayers.filter((row) => {
+    if (position !== 'ALL' && row.position !== position) return false
+    if (searchTerm && !row.name.toLowerCase().includes(searchTerm)) return false
+    return true
+  })
 
   return (
     <div className="players-page">
@@ -90,8 +72,8 @@ export function PlayersPage() {
           className="players-search"
           type="text"
           placeholder="Find player"
-          value={searchInput}
-          onChange={(e) => updateSearchInput(e.target.value)}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
         />
         <select
           className="players-format"
@@ -119,7 +101,7 @@ export function PlayersPage() {
             role="tab"
             aria-selected={position === p}
             className={`position-tab${position === p ? ' active' : ''}`}
-            onClick={() => selectPosition(p)}
+            onClick={() => setPosition(p)}
           >
             {p}
           </button>
@@ -127,7 +109,7 @@ export function PlayersPage() {
       </div>
 
       <div className="players-table-wrapper">
-        {loading && players.length === 0 ? (
+        {loading && allPlayers.length === 0 ? (
           <p className="players-status">Loading players…</p>
         ) : error ? (
           <p className="players-error">{error}</p>

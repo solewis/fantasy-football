@@ -81,20 +81,33 @@ describe('PlayersPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('refetches with the position filter when a position tab is clicked', async () => {
+  it('filters by position client-side without refetching', async () => {
     const fetchMock = mockFetchOnce(samplePlayers)
     render(<PlayersPage />)
     await screen.findByText("Ja'Marr Chase")
 
     fireEvent.click(screen.getByRole('tab', { name: 'RB' }))
 
-    await waitFor(() => {
-      const lastCall = fetchMock.mock.calls.at(-1)?.[0] as string
-      expect(lastCall).toContain('position=RB')
-    })
+    expect(await screen.findByText('Bijan Robinson')).toBeInTheDocument()
+    expect(screen.queryByText("Ja'Marr Chase")).not.toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('refetches with the format param when the format dropdown changes', async () => {
+  it('filters by search text client-side without refetching', async () => {
+    const fetchMock = mockFetchOnce(samplePlayers)
+    render(<PlayersPage />)
+    await screen.findByText("Ja'Marr Chase")
+
+    fireEvent.change(screen.getByPlaceholderText('Find player'), {
+      target: { value: 'chase' },
+    })
+
+    expect(screen.getByText("Ja'Marr Chase")).toBeInTheDocument()
+    expect(screen.queryByText('Bijan Robinson')).not.toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('refetches with only season/format when the format dropdown changes', async () => {
     const fetchMock = mockFetchOnce(samplePlayers)
     render(<PlayersPage />)
     await screen.findByText("Ja'Marr Chase")
@@ -106,24 +119,9 @@ describe('PlayersPage', () => {
     await waitFor(() => {
       const lastCall = fetchMock.mock.calls.at(-1)?.[0] as string
       expect(lastCall).toContain('format=ppr')
+      expect(lastCall).not.toContain('position=')
+      expect(lastCall).not.toContain('search=')
     })
-  })
-
-  it('refetches with the search param after typing (debounced)', async () => {
-    const fetchMock = mockFetchOnce(samplePlayers)
-    render(<PlayersPage />)
-    await screen.findByText("Ja'Marr Chase")
-
-    fireEvent.change(screen.getByPlaceholderText('Find player'), {
-      target: { value: 'chase' },
-    })
-
-    await waitFor(
-      () => {
-        const lastCall = fetchMock.mock.calls.at(-1)?.[0] as string
-        expect(lastCall).toContain('search=chase')
-      },
-      { timeout: 1000 },
-    )
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

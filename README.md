@@ -175,12 +175,18 @@ A real test-isolation bug surfaced while building this: two API test files were 
 
 Position/search filtering was moved **client-side** shortly after the initial build: the backend already returns the full unpaginated set for a format (typically a few hundred to ~1,000 rows), so re-hitting the network on every tab click or keystroke had no real benefit — the frontend now fetches once per format change and filters the already-downloaded list in the browser. The debounce hook this originally needed for search was removed entirely as a result. One side effect: the `Rk` column shows each player's *overall* ADP rank rather than renumbering 1..N within a filtered view (e.g. filtering to RB shows ranks like 1, 2, 5, 6, 9...) — matching how most draft tools present rank as a property of the player, not the current view.
 
+**In-app rankings builder** (`app/ranks.py`, `app/api/ranks.py`, `MyRank` model, `RankingsPage`/`reorder.ts` frontend): the first of two planned paths to build your ranks — an in-app drag-and-drop builder, with a Sheet-based upload still deferred as the other. Pick a scoring format; if you've never saved ranks for that format, the page seeds itself from the current ADP order (reusing the players endpoint, not a separate "seed" endpoint) and shows a note that you're starting from ADP. Drag rows to reorder — dropping onto a row moves your dragged player to sit just before it; a small "drop here to move to the end" zone at the bottom of the table exists because "insert before some row" can't otherwise express "last position." **Save Ranks** sends the complete current order to `PUT /ranks`, which always fully replaces the saved set for that (platform, season, format) rather than diffing — a rank list only ever has one current order, so there's nothing to reconcile.
+
+The reorder logic itself (`reorderList()`) is a pure, DOM-free function, thoroughly unit tested on its own (move up/down, no-ops, move-to-end, unknown ids) — the drag-and-drop UI is just a thin event-wiring layer around it, per this project's practice of keeping calculation logic separate from I/O.
+
+A real bug surfaced while verifying this live in the browser (not caught by the component tests): `handleDrop` originally read the dragged player's id from React *state*, captured in a closure. Component tests passed because Testing Library's `fireEvent` forces a synchronous flush between events, but a genuine rapid `dragstart` → `drop` sequence in the real browser can fire before React re-renders — so the drop handler's closure still saw the *previous* render's (stale) value, silently no-opping the reorder. Fixed by tracking the dragged id in a `ref` (updated synchronously, no render dependency) for the actual drop logic, keeping state only for the "currently dragging" CSS highlight. Worth remembering for any future drag-and-drop: don't trust component tests alone here, since `act()`-wrapped test events can mask exactly this kind of real-world timing bug — verify live drag interactions in an actual browser too.
+
 ## Rough data model (draft)
 
 - `League` — platform, platform_league_id, scoring format, roster settings, connection config
 - `PlatformPlayer` — cached copy of a platform's own player list (platform, platform_player_id, name, position, team) — the canonical player identity *within that league's platform*
 - `NameMapping` — (platform, source_type [`sheet_rank` / `adp`], source_name_raw, normalized_name, platform_player_id, confirmed_by_user) — the persisted output of the reconciliation tool, reused on every future import
-- `MyRank` — (league, platform_player_id, position, overall_rank, tier) — imported from your Google Sheet, resolved through `NameMapping`
+- `MyRank` — (platform, season, format, platform_player_id, rank) — your saved rank order. Scoped like `AdpEntry` (platform/season/format) rather than to a `League`, since leagues aren't modeled yet and a league's actual rank set is just whichever format matches its scoring settings. No tiers yet. Built via the in-app drag-and-drop rankings builder (seeded from ADP, no `NameMapping` needed); a Sheet-based upload is a separate, still-deferred path onto this same table
 - `AdpEntry` — (platform, platform_player_id, season, format, adp) — from Sleeper's projections endpoint, no `NameMapping` needed (already keyed to platform player IDs)
 - `SyncStatus` — (sync_type, season, last_synced_at) — one upserted row per sync type; record counts are always computed live from the tables above, never cached here
 - `Draft` — league, platform draft ID (if synced), draft order, status
@@ -189,7 +195,8 @@ Position/search filtering was moved **client-side** shortly after the initial bu
 ## Open questions
 
 - What's the actual availability-at-next-pick formula — simple ADP-vs-picks-remaining heuristic, or something more involved?
-- Exact Sheet layout/columns for the rank/tier import (one tab per league-format? one tab with a format column?) — on hold along with Phase 3 itself.
+- Exact Sheet layout/columns for the rank/tier import (one tab per league-format? one tab with a format column?) — the Sheet-upload half of Phase 3 is still on hold; the in-app builder half is done.
+- Should tiers get added to the in-app rankings builder (e.g. a visual divider you can drag between rows), or is rank order alone enough for now?
 - Which `adp_*` format(s) map to which of your 3 leagues' actual settings (std/ppr/half_ppr/2qb/dynasty variants)?
 - Where do we source "platform rank" per site, if we still want it later — scraping vs. is there an easier API path?
 - Do the 3 leagues actually differ enough in format that they need distinct rank sets, or do some share one (e.g. two are both "12-team PPR")?
@@ -219,9 +226,9 @@ Fetch and cache a platform's player list (Sleeper first) into `PlatformPlayer`.
 The normalize → exact-match → fuzzy-match → manual-review → persist pipeline described above, built as a standalone reusable module (not tied to Sheets or ADP yet).
 *Done when*: a solid unit test suite covers the tricky cases (Jr./Sr./II/III, punctuation, D/ST entries, ambiguous fuzzy matches), and confirmed mappings are proven to be skipped on re-run.
 
-**Phase 3 — Rankings import (Google Sheets)** — *on hold*
-`gspread` read of your rank Sheet, fed through the Phase 2 pipeline, landing in `MyRank`.
-*Done when*: importing a real league's Sheet resolves cleanly (or clearly flags what needs manual review), with tests covering the import-and-resolve flow against a fixture Sheet payload.
+**Phase 3 — Rankings, in-app builder** ✅ done · **Sheet upload** — *on hold*
+Two planned paths to build `MyRank`, sharing one table. In-app: pick a format, seed from ADP (or start from a previously saved set), drag-and-drop to reorder, save — done, see the "In-app rankings builder" writeup above. Sheet upload (`gspread` read of your rank Sheet, fed through the Phase 2 reconciliation pipeline) is the other, still-deferred path, for whenever there's an external rank source that isn't just "start from ADP and adjust."
+*Done (in-app path)*: 9 new backend tests (query + API) + 16 new frontend tests (9 pure reorder-logic + 5 component + 2 nav), all passing; verified live in the browser — real drag-and-drop reordering, save, and reload-persistence all confirmed against actual data.
 
 **Phase 4 — ADP import** ✅ done (built ahead of Phase 3, which is on hold)
 Originally planned as an ADP CSV (e.g. FantasyPros) run through the Phase 2 reconciliation pipeline. Turned out unnecessary: Sleeper's own (undocumented) projections endpoint (`api.sleeper.com/projections/nfl/{season}`) returns ADP across std/PPR/half-PPR/2QB/dynasty/IDP formats, already keyed to Sleeper's `player_id` — no CSV, no name-matching. Landed in `AdpEntry`.

@@ -47,10 +47,35 @@ body {
 .app-header {
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 
 .app-header h1 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+}
+
+.app-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.app-nav-tab {
+  font: inherit;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.app-nav-tab.active {
+  background: var(--text-primary);
+  color: var(--surface-page);
+  border-color: var(--text-primary);
 }

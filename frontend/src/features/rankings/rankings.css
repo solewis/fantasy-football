@@ -1,0 +1,122 @@
+.rankings-page {
+  padding: 20px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rankings-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.rankings-format {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.rankings-toolbar button {
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.rankings-toolbar button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.rankings-save {
+  background: var(--text-primary);
+  color: var(--surface-page);
+  border-color: var(--text-primary);
+}
+
+.rankings-save-message {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.rankings-source-note {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.rankings-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.rankings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.rankings-table th,
+.rankings-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.rankings-table th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.rankings-table tbody tr {
+  cursor: grab;
+}
+
+.rankings-table tbody tr:hover {
+  background: var(--surface-1);
+}
+
+.rankings-table tbody tr.dragging {
+  opacity: 0.4;
+}
+
+.rankings-table tbody tr:last-of-type td {
+  border-bottom: none;
+}
+
+.rankings-end-zone {
+  cursor: default;
+}
+
+.rankings-end-zone td {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 10px;
+}
+
+.rankings-status,
+.rankings-error {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.rankings-error {
+  color: #d03b3b;
+}

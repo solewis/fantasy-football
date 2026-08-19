@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -84,3 +84,24 @@ class SyncStatus(Base):
         String, nullable=True
     )  # null for non-season-scoped syncs
     last_synced_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class MyRank(Base):
+    """Your personal rank order for a player, scoped like AdpEntry (platform/season/format)
+    rather than to a League -- leagues aren't modeled yet, and a league's actual rank set
+    is just whichever format matches its scoring settings. No tiers yet (v1 scope: an
+    in-app drag-and-drop builder seeded from ADP); a Sheet-based import is a separate,
+    still-deferred path onto the same table.
+    """
+
+    __tablename__ = "my_ranks"
+    __table_args__ = (
+        UniqueConstraint("platform", "season", "format", "platform_player_id", name="uq_my_rank"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String, index=True)
+    season: Mapped[str] = mapped_column(String, index=True)
+    format: Mapped[str] = mapped_column(String, index=True)
+    platform_player_id: Mapped[str] = mapped_column(String, index=True)
+    rank: Mapped[int] = mapped_column(Integer)

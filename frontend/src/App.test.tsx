@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
@@ -34,5 +34,22 @@ describe('App', () => {
     expect(
       screen.getByRole('heading', { name: 'Fantasy Draft Assistant' }),
     ).toBeInTheDocument()
+  })
+
+  it('defaults to the Players tab', () => {
+    render(<App />)
+
+    expect(screen.getByPlaceholderText('Find player')).toBeInTheDocument()
+  })
+
+  it('switches to the Rankings tab when clicked', async () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Rankings' }))
+
+    expect(
+      await screen.findByRole('button', { name: 'Load from ADP' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Find player')).not.toBeInTheDocument()
   })
 })

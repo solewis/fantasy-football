@@ -29,13 +29,39 @@ const samplePlayers: PlayerRow[] = [
   },
 ]
 
-function mockFetchOnce(rows: PlayerRow[]) {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: true,
-    json: () => Promise.resolve(rows),
+const emptySyncStatus = {
+  players: { last_synced_at: null, record_count: 0 },
+  adp: { season: '2026', last_synced_at: null, record_count: 0 },
+}
+
+/** SyncPanel fetches /sync/status on mount alongside PlayersPage's own /players
+ * fetch, so the mock needs to route by URL rather than return one fixed value. */
+function mockFetch(playersResponse: {
+  ok: boolean
+  status?: number
+  body: unknown
+}) {
+  const fetchMock = vi.fn((url: string) => {
+    if (url.includes('/sync/status')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(emptySyncStatus),
+      })
+    }
+    return Promise.resolve({
+      ok: playersResponse.ok,
+      status: playersResponse.status,
+      json: () => Promise.resolve(playersResponse.body),
+    })
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+function playersCallCount(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls.filter(
+    ([url]) => !(url as string).includes('/sync/'),
+  ).length
 }
 
 beforeEach(() => {
@@ -44,7 +70,7 @@ beforeEach(() => {
 
 describe('PlayersPage', () => {
   it('renders players once loaded', async () => {
-    mockFetchOnce(samplePlayers)
+    mockFetch({ ok: true, body: samplePlayers })
 
     render(<PlayersPage />)
 
@@ -57,7 +83,7 @@ describe('PlayersPage', () => {
   })
 
   it('shows an empty state when no players match', async () => {
-    mockFetchOnce([])
+    mockFetch({ ok: true, body: [] })
 
     render(<PlayersPage />)
 
@@ -65,14 +91,7 @@ describe('PlayersPage', () => {
   })
 
   it('shows an error message when the fetch fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-        json: () => Promise.resolve([]),
-      }),
-    )
+    mockFetch({ ok: false, status: 500, body: [] })
 
     render(<PlayersPage />)
 
@@ -82,7 +101,7 @@ describe('PlayersPage', () => {
   })
 
   it('filters by position client-side without refetching', async () => {
-    const fetchMock = mockFetchOnce(samplePlayers)
+    const fetchMock = mockFetch({ ok: true, body: samplePlayers })
     render(<PlayersPage />)
     await screen.findByText("Ja'Marr Chase")
 
@@ -90,11 +109,11 @@ describe('PlayersPage', () => {
 
     expect(await screen.findByText('Bijan Robinson')).toBeInTheDocument()
     expect(screen.queryByText("Ja'Marr Chase")).not.toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(playersCallCount(fetchMock)).toBe(1)
   })
 
   it('filters by search text client-side without refetching', async () => {
-    const fetchMock = mockFetchOnce(samplePlayers)
+    const fetchMock = mockFetch({ ok: true, body: samplePlayers })
     render(<PlayersPage />)
     await screen.findByText("Ja'Marr Chase")
 
@@ -104,11 +123,11 @@ describe('PlayersPage', () => {
 
     expect(screen.getByText("Ja'Marr Chase")).toBeInTheDocument()
     expect(screen.queryByText('Bijan Robinson')).not.toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(playersCallCount(fetchMock)).toBe(1)
   })
 
   it('refetches with only season/format when the format dropdown changes', async () => {
-    const fetchMock = mockFetchOnce(samplePlayers)
+    const fetchMock = mockFetch({ ok: true, body: samplePlayers })
     render(<PlayersPage />)
     await screen.findByText("Ja'Marr Chase")
 
@@ -117,11 +136,14 @@ describe('PlayersPage', () => {
     })
 
     await waitFor(() => {
-      const lastCall = fetchMock.mock.calls.at(-1)?.[0] as string
-      expect(lastCall).toContain('format=ppr')
-      expect(lastCall).not.toContain('position=')
-      expect(lastCall).not.toContain('search=')
+      expect(playersCallCount(fetchMock)).toBe(2)
     })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const lastPlayersCall = fetchMock.mock.calls
+      .map(([url]) => url as string)
+      .filter((url) => !url.includes('/sync/'))
+      .at(-1)
+    expect(lastPlayersCall).toContain('format=ppr')
+    expect(lastPlayersCall).not.toContain('position=')
+    expect(lastPlayersCall).not.toContain('search=')
   })
 })

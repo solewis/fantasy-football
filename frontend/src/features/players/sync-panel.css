@@ -1,0 +1,50 @@
+.sync-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+
+.sync-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.sync-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sync-meta {
+  color: var(--text-secondary);
+  cursor: help;
+}
+
+.sync-row button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.sync-row button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.sync-error {
+  width: 100%;
+  margin: 0;
+  color: #d03b3b;
+  font-size: 12px;
+}

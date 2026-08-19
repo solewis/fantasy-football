@@ -55,13 +55,15 @@
 }
 
 .draft-board-wrapper {
-  overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .draft-board {
+  table-layout: fixed;
   border-collapse: collapse;
   width: 100%;
 }
@@ -72,7 +74,8 @@
   padding: 14px 8px;
   font-size: 12px;
   white-space: nowrap;
-  min-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .draft-board th {
@@ -314,7 +317,7 @@
 
 .draft-page {
   padding: 20px;
-  max-width: 1400px;
+  max-width: 1900px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;

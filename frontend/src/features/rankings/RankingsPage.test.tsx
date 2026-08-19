@@ -191,6 +191,53 @@ describe('RankingsPage', () => {
     expect(within(rowsAfter[2]).getByText('Bijan Robinson')).toBeInTheDocument()
   })
 
+  it('move-down button moves a player exactly one spot', async () => {
+    mockFetch({ ranks: savedRanks })
+    render(<RankingsPage />)
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Move Bijan Robinson down' }),
+    )
+
+    const rows = screen.getAllByRole('row')
+    expect(within(rows[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
+    expect(within(rows[2]).getByText('Bijan Robinson')).toBeInTheDocument()
+  })
+
+  it('move-up button moves a player exactly one spot', async () => {
+    mockFetch({ ranks: savedRanks })
+    render(<RankingsPage />)
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: "Move Ja'Marr Chase up" }),
+    )
+
+    const rows = screen.getAllByRole('row')
+    expect(within(rows[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
+    expect(within(rows[2]).getByText('Bijan Robinson')).toBeInTheDocument()
+  })
+
+  it('disables move-up for the first row and move-down for the last row', async () => {
+    mockFetch({ ranks: savedRanks })
+    render(<RankingsPage />)
+    await screen.findByText('Bijan Robinson')
+
+    expect(
+      screen.getByRole('button', { name: 'Move Bijan Robinson up' }),
+    ).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: "Move Ja'Marr Chase down" }),
+    ).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Move Bijan Robinson down' }),
+    ).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: "Move Ja'Marr Chase up" }),
+    ).toBeEnabled()
+  })
+
   it('Load from ADP replaces the working list', async () => {
     mockFetch({ ranks: savedRanks, players: adpPlayers })
     render(<RankingsPage />)

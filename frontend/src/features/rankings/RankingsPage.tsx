@@ -134,6 +134,39 @@ export function RankingsPage() {
     setSaveMessage(null)
   }
 
+  /** Up/down buttons -- an alternative to drag-and-drop for a precise
+   * one-spot move, reusing reorderList with the immediate neighbor as the
+   * hover target rather than any new reorder logic. */
+  function moveUp(index: number) {
+    if (index <= 0) return
+    const current = workingList[index]
+    const previous = workingList[index - 1]
+    setWorkingList((prev) =>
+      reorderList(
+        prev,
+        current.platform_player_id,
+        previous.platform_player_id,
+        false,
+      ),
+    )
+    setSaveMessage(null)
+  }
+
+  function moveDown(index: number) {
+    if (index >= workingList.length - 1) return
+    const current = workingList[index]
+    const next = workingList[index + 1]
+    setWorkingList((prev) =>
+      reorderList(
+        prev,
+        current.platform_player_id,
+        next.platform_player_id,
+        true,
+      ),
+    )
+    setSaveMessage(null)
+  }
+
   return (
     <div className="rankings-page">
       <div className="rankings-toolbar">
@@ -189,6 +222,7 @@ export function RankingsPage() {
                 <th>ADP</th>
                 <th>Name</th>
                 <th>Team</th>
+                <th>Move</th>
               </tr>
             </thead>
             <tbody>
@@ -219,6 +253,26 @@ export function RankingsPage() {
                     <span className="player-name">{row.name}</span>
                   </td>
                   <td>{row.team ?? '—'}</td>
+                  <td className="rankings-move-cell">
+                    <button
+                      type="button"
+                      className="rankings-move-btn"
+                      onClick={() => moveUp(index)}
+                      disabled={index === 0}
+                      aria-label={`Move ${row.name} up`}
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      className="rankings-move-btn"
+                      onClick={() => moveDown(index)}
+                      disabled={index === workingList.length - 1}
+                      aria-label={`Move ${row.name} down`}
+                    >
+                      ▼
+                    </button>
+                  </td>
                 </tr>
               ))}
               <tr
@@ -232,7 +286,7 @@ export function RankingsPage() {
                   endDrag()
                 }}
               >
-                <td colSpan={4}>Drop here to move to the end</td>
+                <td colSpan={5}>Drop here to move to the end</td>
               </tr>
             </tbody>
           </table>

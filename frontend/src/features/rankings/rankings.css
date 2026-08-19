@@ -99,6 +99,31 @@
   border-bottom: none;
 }
 
+.rankings-move-cell {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.rankings-move-btn {
+  font: inherit;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.rankings-move-btn + .rankings-move-btn {
+  margin-left: 4px;
+}
+
+.rankings-move-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .rankings-end-zone {
   cursor: default;
 }

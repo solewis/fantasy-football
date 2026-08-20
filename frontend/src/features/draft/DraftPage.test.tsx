@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DraftStatus, PickRow, QueueRow } from '../../api/draft'
@@ -21,6 +21,8 @@ const PLAYERS: Record<
 function mockBackend() {
   let picks: PickRow[] = []
   let queue: QueueRow[] = []
+  let platform: 'manual' | 'sleeper' = 'manual'
+  let syncedOnce = false
   const numTeams = 2
   const numRounds = 2
 
@@ -42,6 +44,8 @@ function mockBackend() {
     return {
       draft: {
         id: 1,
+        platform,
+        platform_draft_id: platform === 'sleeper' ? '999' : null,
         season: '2026',
         format: 'half_ppr',
         num_teams: numTeams,
@@ -63,6 +67,36 @@ function mockBackend() {
       ? (JSON.parse(init.body as string) as Record<string, unknown>)
       : undefined
 
+    if (/\/drafts\/sleeper$/.test(url) && method === 'POST') {
+      platform = 'sleeper'
+      return Promise.resolve(jsonResponse(status()))
+    }
+    if (/\/drafts\/\d+\/sync$/.test(url) && method === 'POST') {
+      // Simulate one external pick landing on Sleeper, the first time sync runs.
+      if (!syncedOnce) {
+        syncedOnce = true
+        const pickNumber = picks.length + 1
+        const rs = roundAndSlot(pickNumber)
+        const player = PLAYERS['1']
+        picks = [
+          ...picks,
+          {
+            pick_number: pickNumber,
+            round: rs.round,
+            slot: rs.slot,
+            platform_player_id: '1',
+            name: player.name,
+            position: player.position,
+            team: player.team,
+          },
+        ]
+      }
+      return Promise.resolve(jsonResponse(status()))
+    }
+    if (/\/drafts\/\d+\/switch-to-manual$/.test(url) && method === 'POST') {
+      platform = 'manual'
+      return Promise.resolve(jsonResponse(status()))
+    }
     if (/\/drafts$/.test(url) && method === 'POST') {
       return Promise.resolve(jsonResponse(status()))
     }
@@ -226,5 +260,73 @@ describe('DraftPage', () => {
       await screen.findByRole('heading', { name: 'New draft' }),
     ).toBeInTheDocument()
     expect(localStorage.getItem('fantasy-draft-app:activeDraftId')).toBeNull()
+  })
+
+  it('creating a Sleeper-synced draft hides manual controls and shows the badge', async () => {
+    mockBackend()
+    render(<DraftPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Sync from Sleeper' }))
+    fireEvent.change(screen.getByLabelText('Sleeper draft ID'), {
+      target: { value: '999' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start Draft' }))
+
+    expect(await screen.findByText('Synced from Sleeper')).toBeInTheDocument()
+    await screen.findByText('Josh Allen')
+    expect(
+      screen.queryByRole('button', { name: 'Undo last pick' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Switch to manual' }),
+    ).toBeInTheDocument()
+    expect(screen.queryAllByRole('button', { name: 'Draft' })).toHaveLength(0)
+  })
+
+  it('polls Sleeper for new picks and updates the board', async () => {
+    vi.useFakeTimers()
+    try {
+      mockBackend()
+      render(<DraftPage />)
+      fireEvent.click(screen.getByRole('tab', { name: 'Sync from Sleeper' }))
+      fireEvent.change(screen.getByLabelText('Sleeper draft ID'), {
+        target: { value: '999' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Start Draft' }))
+
+      // Flush the create-draft + initial-load fetch/state chain (no real
+      // timers involved yet -- just draining queued microtasks).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.getByText('Synced from Sleeper')).toBeInTheDocument()
+      const board = () => screen.getAllByRole('table')[0]
+      expect(within(board()).queryByText('Josh Allen')).not.toBeInTheDocument()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+
+      expect(within(board()).getByText('Josh Allen')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('Switch to manual (confirmed) restores manual controls', async () => {
+    mockBackend()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<DraftPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Sync from Sleeper' }))
+    fireEvent.change(screen.getByLabelText('Sleeper draft ID'), {
+      target: { value: '999' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Start Draft' }))
+    await screen.findByText('Synced from Sleeper')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to manual' }))
+
+    await screen.findByRole('button', { name: 'Undo last pick' })
+    expect(screen.queryByText('Synced from Sleeper')).not.toBeInTheDocument()
   })
 })

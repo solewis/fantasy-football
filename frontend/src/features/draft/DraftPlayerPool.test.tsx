@@ -73,6 +73,7 @@ describe('DraftPlayerPool', () => {
         format="half_ppr"
         draftedIds={new Set()}
         queuedIds={new Set()}
+        canDraft={true}
         onDraft={vi.fn()}
         onQueue={vi.fn()}
       />,
@@ -90,6 +91,7 @@ describe('DraftPlayerPool', () => {
         format="half_ppr"
         draftedIds={new Set(['2'])}
         queuedIds={new Set()}
+        canDraft={true}
         onDraft={vi.fn()}
         onQueue={vi.fn()}
       />,
@@ -108,6 +110,7 @@ describe('DraftPlayerPool', () => {
         format="half_ppr"
         draftedIds={new Set()}
         queuedIds={new Set()}
+        canDraft={true}
         onDraft={onDraft}
         onQueue={vi.fn()}
       />,
@@ -128,6 +131,7 @@ describe('DraftPlayerPool', () => {
         format="half_ppr"
         draftedIds={new Set()}
         queuedIds={new Set(['3'])}
+        canDraft={true}
         onDraft={vi.fn()}
         onQueue={onQueue}
       />,
@@ -148,6 +152,7 @@ describe('DraftPlayerPool', () => {
         format="half_ppr"
         draftedIds={new Set()}
         queuedIds={new Set()}
+        canDraft={true}
         onDraft={vi.fn()}
         onQueue={vi.fn()}
       />,
@@ -158,5 +163,26 @@ describe('DraftPlayerPool', () => {
 
     expect(screen.getByText("Ja'Marr Chase")).toBeInTheDocument()
     expect(screen.queryByText('Bijan Robinson')).not.toBeInTheDocument()
+  })
+
+  it('hides the Draft button when canDraft is false', async () => {
+    mockFetch({ ranks: savedRanks })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={false}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+
+    expect(
+      screen.queryByRole('button', { name: 'Draft' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '+ Queue' })).toHaveLength(2)
   })
 })

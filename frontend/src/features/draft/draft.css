@@ -54,6 +54,27 @@
   font-size: 12px;
 }
 
+.draft-setup-mode-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.draft-setup-form button.draft-setup-mode-tab {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.draft-setup-form button.draft-setup-mode-tab.active {
+  background: var(--text-primary);
+  color: var(--surface-page);
+  border-color: var(--text-primary);
+}
+
 .draft-board-wrapper {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -430,6 +451,21 @@
 .draft-my-turn {
   color: var(--text-primary);
   font-weight: 700;
+}
+
+.draft-page-sleeper-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
 }
 
 .draft-page-header-actions {

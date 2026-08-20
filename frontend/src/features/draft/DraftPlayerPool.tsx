@@ -11,6 +11,7 @@ interface DraftPlayerPoolProps {
   format: string
   draftedIds: Set<string>
   queuedIds: Set<string>
+  canDraft: boolean
   onDraft: (playerId: string) => void
   onQueue: (playerId: string) => void
 }
@@ -19,6 +20,7 @@ export function DraftPlayerPool({
   format,
   draftedIds,
   queuedIds,
+  canDraft,
   onDraft,
   onQueue,
 }: DraftPlayerPoolProps) {
@@ -124,12 +126,14 @@ export function DraftPlayerPool({
                   </td>
                   <td>{row.team ?? '—'}</td>
                   <td className="draft-pool-actions">
-                    <button
-                      type="button"
-                      onClick={() => onDraft(row.platform_player_id)}
-                    >
-                      Draft
-                    </button>
+                    {canDraft && (
+                      <button
+                        type="button"
+                        onClick={() => onDraft(row.platform_player_id)}
+                      >
+                        Draft
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => onQueue(row.platform_player_id)}

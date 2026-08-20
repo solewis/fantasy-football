@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from app.models import AdpEntry, PlatformPlayer, RankEntry, RankSet
+from app.models import AdpEntry, League, PlatformPlayer, RankEntry, RankSet
 from app.players import list_players
 
 PLATFORM = "sleeper"
@@ -119,8 +119,10 @@ def delete_rank_set(session: Session, rank_set_id: int) -> None:
     if rank_set is None:
         raise RankSetError("Rank set not found")
 
-    # No PRAGMA foreign_keys=ON in this app -- entries have to be cleared explicitly.
+    # No PRAGMA foreign_keys=ON in this app -- entries (and any League still
+    # pointing at this set) have to be cleared explicitly, not left dangling.
     session.query(RankEntry).filter_by(rank_set_id=rank_set_id).delete()
+    session.query(League).filter_by(rank_set_id=rank_set_id).update({"rank_set_id": None})
     session.delete(rank_set)
     session.commit()
 

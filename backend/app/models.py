@@ -1,6 +1,15 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -125,6 +134,37 @@ class RankEntry(Base):
     rank_set_id: Mapped[int] = mapped_column(ForeignKey("rank_sets.id"), index=True)
     platform_player_id: Mapped[str] = mapped_column(String, index=True)
     rank: Mapped[int] = mapped_column(Integer)
+
+
+class League(Base):
+    """One of your real fantasy leagues, set up once so its settings don't need
+    retyping every draft. `platform`/`platform_league_id` mirror Draft's pattern
+    (generic field, "sleeper" the only usable value for now). `rank_set_id` is a
+    plain, nullable reference to a RankSet -- many leagues can share one rank set
+    (e.g. two leagues that are both "half PPR"), and a league is fully usable
+    before you've picked one.
+    """
+
+    __tablename__ = "leagues"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String, default="sleeper")
+    platform_league_id: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    season: Mapped[str] = mapped_column(String, index=True)
+    format: Mapped[str] = mapped_column(String, index=True)
+    num_teams: Mapped[int] = mapped_column(Integer)
+    # Sleeper's own roster_positions array, verbatim (includes "BN" bench
+    # entries) -- order-preserving, opaque, never filtered/joined on, so JSON
+    # is the right fit (unlike RankEntry, which is a real relational table).
+    roster_positions: Mapped[list] = mapped_column(JSON)
+    # {roster_id (as a string): team name}, from joining the league's rosters
+    # and users endpoints -- draft-slot assignment isn't known at the league
+    # level (only once a specific draft exists), so this maps roster ownership,
+    # not board position.
+    team_names: Mapped[dict] = mapped_column(JSON)
+    rank_set_id: Mapped[int | None] = mapped_column(ForeignKey("rank_sets.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class Draft(Base):

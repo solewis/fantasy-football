@@ -1,0 +1,156 @@
+.leagues-page {
+  padding: 20px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.leagues-toolbar {
+  margin-bottom: 16px;
+}
+
+.leagues-page button {
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.leagues-page button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.leagues-page input,
+.leagues-page select {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.leagues-page label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.league-add-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 420px;
+  margin: 0 0 20px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+
+.league-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.leagues-error {
+  color: #d03b3b;
+  font-size: 12px;
+}
+
+.leagues-status {
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.leagues-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.league-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.league-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.league-card-header strong {
+  font-size: 15px;
+}
+
+.league-card-meta {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.league-card-rankset {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+}
+
+.rank-set-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rank-set-picker-input {
+  min-width: 160px;
+}
+
+.league-card-teams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.league-team-chip {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-page);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.league-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.league-card-actions button {
+  font-size: 12px;
+  padding: 5px 10px;
+}

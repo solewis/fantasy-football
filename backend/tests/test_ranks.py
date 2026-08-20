@@ -1,10 +1,12 @@
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app import ranks
 from app.db import Base
-from app.models import AdpEntry, PlatformPlayer, RankEntry, RankSet
+from app.models import AdpEntry, League, PlatformPlayer, RankEntry, RankSet
 
 
 def make_session() -> Session:
@@ -144,6 +146,30 @@ def test_delete_rank_set_removes_entries_too():
 
     assert session.get(RankSet, rank_set.id) is None
     assert session.query(RankEntry).filter_by(rank_set_id=rank_set.id).count() == 0
+
+
+def test_delete_rank_set_nulls_out_leagues_pointing_at_it():
+    session = make_session()
+    rank_set = make_set(session, name="Main")
+    league = League(
+        platform="sleeper",
+        platform_league_id="999",
+        name="Test League",
+        season="2026",
+        format="half_ppr",
+        num_teams=10,
+        roster_positions=["QB", "RB"],
+        team_names={},
+        rank_set_id=rank_set.id,
+        created_at=datetime.now(UTC),
+    )
+    session.add(league)
+    session.commit()
+
+    ranks.delete_rank_set(session, rank_set.id)
+
+    session.refresh(league)
+    assert league.rank_set_id is None
 
 
 def test_delete_unknown_rank_set_raises():

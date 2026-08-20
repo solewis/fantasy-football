@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -105,3 +105,56 @@ class MyRank(Base):
     format: Mapped[str] = mapped_column(String, index=True)
     platform_player_id: Mapped[str] = mapped_column(String, index=True)
     rank: Mapped[int] = mapped_column(Integer)
+
+
+class Draft(Base):
+    """A local, manually-tracked draft session -- not yet linked to a real platform draft
+    (that's Phase 6, live Sleeper sync). `platform` is included now so a future sync can
+    slot in `platform_draft_id` without reshaping this table.
+    """
+
+    __tablename__ = "drafts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String, default="manual")
+    platform_draft_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    season: Mapped[str] = mapped_column(String, index=True)
+    format: Mapped[str] = mapped_column(String, index=True)
+    num_teams: Mapped[int] = mapped_column(Integer)
+    num_rounds: Mapped[int] = mapped_column(Integer)
+    my_slot: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class DraftPick(Base):
+    """One pick in a draft. `round`/`slot` (team column) are deliberately NOT stored --
+    they're always derived from pick_number + the draft's num_teams via the snake-order
+    math in app/draft_logic.py, so there's nothing to keep in sync.
+    """
+
+    __tablename__ = "draft_picks"
+    __table_args__ = (
+        UniqueConstraint("draft_id", "pick_number", name="uq_draft_pick_number"),
+        UniqueConstraint("draft_id", "platform_player_id", name="uq_draft_pick_player"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    draft_id: Mapped[int] = mapped_column(ForeignKey("drafts.id"), index=True)
+    pick_number: Mapped[int] = mapped_column(Integer)
+    platform_player_id: Mapped[str] = mapped_column(String)
+
+
+class DraftQueueEntry(Base):
+    """Your personal draft-day shortlist, scoped to one draft (not global like MyRank) --
+    a live queue is inherently tied to a specific board, and resets fresh per draft.
+    """
+
+    __tablename__ = "draft_queue_entries"
+    __table_args__ = (
+        UniqueConstraint("draft_id", "platform_player_id", name="uq_draft_queue_player"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    draft_id: Mapped[int] = mapped_column(ForeignKey("drafts.id"), index=True)
+    platform_player_id: Mapped[str] = mapped_column(String)
+    order: Mapped[int] = mapped_column(Integer)

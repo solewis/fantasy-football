@@ -1,59 +1,35 @@
-/*
- * Position colors: QB/RB/WR/TE/K/DEF from the dataviz skill's default
- * categorical palette (first 6 of 8, in documented order), validated on the
- * adjacent CVD pairlist -- the best guarantee achievable for 6 unfoldable
- * categories (the palette's own docs cap all-pairs guarantees at 3). Identity
- * is never color-alone: the position abbreviation text is always shown too.
- */
 .position-tag[data-position='QB'] {
-  --position-color: #2a78d6;
+  --position-color: var(--pos-qb);
 }
 .position-tag[data-position='RB'] {
-  --position-color: #eb6834;
+  --position-color: var(--pos-rb);
 }
 .position-tag[data-position='WR'] {
-  --position-color: #1baf7a;
+  --position-color: var(--pos-wr);
 }
 .position-tag[data-position='TE'] {
-  --position-color: #eda100;
+  --position-color: var(--pos-te);
 }
 .position-tag[data-position='K'] {
-  --position-color: #e87ba4;
+  --position-color: var(--pos-k);
 }
 .position-tag[data-position='DEF'] {
-  --position-color: #008300;
-}
-
-@media (prefers-color-scheme: dark) {
-  .position-tag[data-position='QB'] {
-    --position-color: #3987e5;
-  }
-  .position-tag[data-position='RB'] {
-    --position-color: #d95926;
-  }
-  .position-tag[data-position='WR'] {
-    --position-color: #199e70;
-  }
-  .position-tag[data-position='TE'] {
-    --position-color: #c98500;
-  }
-  .position-tag[data-position='K'] {
-    --position-color: #d55181;
-  }
+  --position-color: var(--pos-def);
 }
 
 .position-tag {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  min-width: 34px;
-  padding: 2px 6px;
+  width: 30px;
+  height: 26px;
   margin-right: 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--position-color, #6b6b6b);
   color: #fff;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }

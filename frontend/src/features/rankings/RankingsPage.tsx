@@ -2,21 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 
 import { fetchPlayers } from '../../api/players'
 import { fetchRanks, saveRanks, type RankRow } from '../../api/ranks'
+import { FORMATS, SEASON } from '../../lib/formats'
+import { isBelowMidpoint, reorderList } from '../../lib/reorder'
 import { PositionTag } from '../players/PositionTag'
-import { isBelowMidpoint, reorderList } from './reorder'
 import './rankings.css'
-
-const FORMATS = [
-  { value: 'std', label: 'Standard' },
-  { value: 'ppr', label: 'PPR' },
-  { value: 'half_ppr', label: 'Half PPR' },
-  { value: '2qb', label: '2QB / Superflex' },
-  { value: 'dynasty_std', label: 'Dynasty (Std)' },
-  { value: 'dynasty_ppr', label: 'Dynasty (PPR)' },
-  { value: 'dynasty_half_ppr', label: 'Dynasty (Half PPR)' },
-] as const
-
-const SEASON = '2026'
 
 type Source = 'saved' | 'adp' | null
 

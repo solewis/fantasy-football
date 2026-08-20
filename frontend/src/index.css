@@ -7,6 +7,21 @@
   --border: #e1e0d9;
   --border-strong: #c3c2b7;
 
+  /*
+   * Position colors: QB/RB/WR/TE/K/DEF from the dataviz skill's default
+   * categorical palette (first 6 of 8, in documented order), validated on
+   * the adjacent CVD pairlist -- the best guarantee achievable for 6
+   * unfoldable categories (the palette's own docs cap all-pairs guarantees
+   * at 3). Identity is never color-alone: the position abbreviation text is
+   * always shown too.
+   */
+  --pos-qb: #2a78d6;
+  --pos-rb: #eb6834;
+  --pos-wr: #1baf7a;
+  --pos-te: #eda100;
+  --pos-k: #e87ba4;
+  --pos-def: #008300;
+
   font:
     15px/1.45 system-ui,
     -apple-system,
@@ -24,6 +39,13 @@
     --text-muted: #898781;
     --border: #2c2c2a;
     --border-strong: #383835;
+
+    --pos-qb: #3987e5;
+    --pos-rb: #d95926;
+    --pos-wr: #199e70;
+    --pos-te: #c98500;
+    --pos-k: #d55181;
+    /* --pos-def is mode-invariant, no override needed */
   }
 }
 

@@ -294,31 +294,76 @@
 
 .draft-roster-slots {
   list-style: none;
-  margin: 0 0 16px;
+  margin: 0 0 20px;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 14px;
 }
 
 .draft-roster-slot {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: var(--surface-page);
-  font-size: 13px;
+  gap: 14px;
+  font-size: 14px;
 }
 
-.draft-roster-slot-label {
-  width: 34px;
+.roster-slot-badge {
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  overflow: hidden;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.roster-slot-badge[data-position='QB'] {
+  background: var(--pos-qb);
+}
+.roster-slot-badge[data-position='RB'] {
+  background: var(--pos-rb);
+}
+.roster-slot-badge[data-position='WR'] {
+  background: var(--pos-wr);
+}
+.roster-slot-badge[data-position='TE'] {
+  background: var(--pos-te);
+}
+.roster-slot-badge[data-position='K'] {
+  background: var(--pos-k);
+}
+.roster-slot-badge[data-position='DEF'] {
+  background: var(--pos-def);
+}
+
+.roster-slot-badge-flex {
+  padding: 0;
+}
+
+.roster-slot-badge-segment {
+  flex: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+
+.roster-slot-badge-segment[data-position='RB'] {
+  background: var(--pos-rb);
+}
+.roster-slot-badge-segment[data-position='WR'] {
+  background: var(--pos-wr);
+}
+.roster-slot-badge-segment[data-position='TE'] {
+  background: var(--pos-te);
 }
 
 .draft-roster-slot-player {
@@ -330,7 +375,6 @@
 
 .draft-roster-slot-empty {
   color: var(--text-muted);
-  font-style: italic;
 }
 
 .draft-roster-group {

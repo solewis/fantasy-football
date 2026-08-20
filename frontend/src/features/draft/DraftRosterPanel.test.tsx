@@ -19,13 +19,16 @@ function pick(overrides: Partial<PickRow>): PickRow {
 
 describe('DraftRosterPanel', () => {
   it('shows every starter slot as Empty when nothing is drafted yet', () => {
-    render(<DraftRosterPanel picks={[]} />)
+    const { container } = render(<DraftRosterPanel picks={[]} />)
 
-    const labels = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DEF']
-    for (const label of labels) {
-      expect(screen.getAllByText(label).length).toBeGreaterThan(0)
-    }
     expect(screen.getAllByText('Empty')).toHaveLength(9)
+    expect(
+      container.querySelectorAll('.roster-slot-badge[data-position="RB"]'),
+    ).toHaveLength(2)
+    expect(
+      container.querySelectorAll('.roster-slot-badge[data-position="WR"]'),
+    ).toHaveLength(2)
+    expect(container.querySelector('.roster-slot-badge-flex')).not.toBeNull()
     expect(screen.getByText('No bench players yet.')).toBeInTheDocument()
   })
 
@@ -34,12 +37,11 @@ describe('DraftRosterPanel', () => {
       pick({ platform_player_id: '1', name: 'Josh Allen', position: 'QB' }),
     ]
 
-    render(<DraftRosterPanel picks={picks} />)
+    const { container } = render(<DraftRosterPanel picks={picks} />)
 
-    const qbLabel = screen
-      .getAllByText('QB')
-      .find((el) => el.classList.contains('draft-roster-slot-label'))
-    const qbSlot = qbLabel?.closest('.draft-roster-slot')
+    const qbSlot = container
+      .querySelector('.roster-slot-badge[data-position="QB"]')
+      ?.closest('.draft-roster-slot')
     expect(
       within(qbSlot as HTMLElement).getByText('Josh Allen'),
     ).toBeInTheDocument()
@@ -52,9 +54,11 @@ describe('DraftRosterPanel', () => {
       pick({ platform_player_id: '3', name: 'RB Three', position: 'RB' }),
     ]
 
-    render(<DraftRosterPanel picks={picks} />)
+    const { container } = render(<DraftRosterPanel picks={picks} />)
 
-    const flexSlot = screen.getByText('FLEX').closest('.draft-roster-slot')
+    const flexSlot = container
+      .querySelector('.roster-slot-badge-flex')
+      ?.closest('.draft-roster-slot')
     expect(
       within(flexSlot as HTMLElement).getByText('RB Three'),
     ).toBeInTheDocument()

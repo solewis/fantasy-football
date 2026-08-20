@@ -23,6 +23,12 @@ const STARTER_SLOTS: readonly RosterSlotTemplate[] = [
   { label: 'DEF', eligible: ['DEF'] },
 ]
 
+const FLEX_SEGMENTS = [
+  { letter: 'W', position: 'WR' },
+  { letter: 'R', position: 'RB' },
+  { letter: 'T', position: 'TE' },
+]
+
 interface AssignedSlot extends RosterSlotTemplate {
   pick: PickRow | null
 }
@@ -67,6 +73,30 @@ function assignToSlots(picks: PickRow[]): {
   return { slots, bench }
 }
 
+function RosterSlotBadge({ label }: { label: string }) {
+  if (label === 'FLEX') {
+    return (
+      <span className="roster-slot-badge roster-slot-badge-flex">
+        {FLEX_SEGMENTS.map((segment) => (
+          <span
+            key={segment.position}
+            className="roster-slot-badge-segment"
+            data-position={segment.position}
+          >
+            {segment.letter}
+          </span>
+        ))}
+      </span>
+    )
+  }
+
+  return (
+    <span className="roster-slot-badge" data-position={label}>
+      {label}
+    </span>
+  )
+}
+
 export function DraftRosterPanel({ picks }: DraftRosterPanelProps) {
   const { slots, bench } = assignToSlots(picks)
 
@@ -75,10 +105,12 @@ export function DraftRosterPanel({ picks }: DraftRosterPanelProps) {
       <ul className="draft-roster-slots">
         {slots.map((slot, i) => (
           <li key={i} className="draft-roster-slot">
-            <span className="draft-roster-slot-label">{slot.label}</span>
+            <RosterSlotBadge label={slot.label} />
             {slot.pick ? (
               <span className="draft-roster-slot-player">
-                <PositionTag position={slot.pick.position} />
+                {slot.label === 'FLEX' && (
+                  <PositionTag position={slot.pick.position} />
+                )}
                 <span>{slot.pick.name}</span>
               </span>
             ) : (

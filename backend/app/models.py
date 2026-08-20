@@ -86,23 +86,43 @@ class SyncStatus(Base):
     last_synced_at: Mapped[datetime] = mapped_column(DateTime)
 
 
-class MyRank(Base):
-    """Your personal rank order for a player, scoped like AdpEntry (platform/season/format)
-    rather than to a League -- leagues aren't modeled yet, and a league's actual rank set
-    is just whichever format matches its scoring settings. No tiers yet (v1 scope: an
-    in-app drag-and-drop builder seeded from ADP); a Sheet-based import is a separate,
-    still-deferred path onto the same table.
+class RankSet(Base):
+    """A named, orderable rank list scoped to one platform/season/scoring format.
+
+    Multiple sets can exist per format (e.g. "Main" and "Zero-RB experiment" for the
+    same half_ppr season) -- a future League points at exactly one of these via a
+    plain rank_set_id reference, never the other way around: a RankSet has no idea
+    which (if any) leagues use it, and AdpEntry stays completely separate from this
+    table (ADP is generic per platform/season/format, shared by every rank set and
+    league that happens to use that format).
     """
 
-    __tablename__ = "my_ranks"
+    __tablename__ = "rank_sets"
     __table_args__ = (
-        UniqueConstraint("platform", "season", "format", "platform_player_id", name="uq_my_rank"),
+        UniqueConstraint("platform", "season", "format", "name", name="uq_rank_set_name"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    platform: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    platform: Mapped[str] = mapped_column(String, index=True, default="sleeper")
     season: Mapped[str] = mapped_column(String, index=True)
     format: Mapped[str] = mapped_column(String, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class RankEntry(Base):
+    """One player's position within a RankSet. platform/season/format deliberately
+    live only on the parent RankSet, not denormalized here (unlike the old flat
+    MyRank table this replaces) -- there's now a parent row to hang them on.
+    """
+
+    __tablename__ = "rank_entries"
+    __table_args__ = (
+        UniqueConstraint("rank_set_id", "platform_player_id", name="uq_rank_entry_player"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rank_set_id: Mapped[int] = mapped_column(ForeignKey("rank_sets.id"), index=True)
     platform_player_id: Mapped[str] = mapped_column(String, index=True)
     rank: Mapped[int] = mapped_column(Integer)
 
@@ -145,8 +165,9 @@ class DraftPick(Base):
 
 
 class DraftQueueEntry(Base):
-    """Your personal draft-day shortlist, scoped to one draft (not global like MyRank) --
-    a live queue is inherently tied to a specific board, and resets fresh per draft.
+    """Your personal draft-day shortlist, scoped to one draft (not global like a
+    RankSet) -- a live queue is inherently tied to a specific board, and resets
+    fresh per draft.
     """
 
     __tablename__ = "draft_queue_entries"

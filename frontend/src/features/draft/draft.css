@@ -228,12 +228,17 @@
   max-height: 420px;
 }
 
-.draft-queue-empty,
-.draft-roster-empty {
+.draft-queue-empty {
   color: var(--text-secondary);
   font-size: 13px;
   text-align: center;
   padding: 20px 0;
+}
+
+.draft-roster-empty {
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 4px 0;
 }
 
 .draft-queue-list {
@@ -285,6 +290,47 @@
 .draft-queue-actions button:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.draft-roster-slots {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.draft-roster-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-page);
+  font-size: 13px;
+}
+
+.draft-roster-slot-label {
+  width: 34px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.draft-roster-slot-player {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+}
+
+.draft-roster-slot-empty {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .draft-roster-group {

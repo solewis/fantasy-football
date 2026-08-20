@@ -18,49 +18,59 @@ function pick(overrides: Partial<PickRow>): PickRow {
 }
 
 describe('DraftRosterPanel', () => {
-  it('shows an empty message when nothing is drafted yet', () => {
+  it('shows every starter slot as Empty when nothing is drafted yet', () => {
     render(<DraftRosterPanel picks={[]} />)
 
-    expect(screen.getByText('No players drafted yet.')).toBeInTheDocument()
+    const labels = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DEF']
+    for (const label of labels) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0)
+    }
+    expect(screen.getAllByText('Empty')).toHaveLength(9)
+    expect(screen.getByText('No bench players yet.')).toBeInTheDocument()
   })
 
-  it('groups picks by position', () => {
+  it('fills the matching position slot for a drafted player', () => {
     const picks = [
       pick({ platform_player_id: '1', name: 'Josh Allen', position: 'QB' }),
-      pick({ platform_player_id: '2', name: 'Bijan Robinson', position: 'RB' }),
-      pick({ platform_player_id: '3', name: "Ja'Marr Chase", position: 'WR' }),
     ]
 
     render(<DraftRosterPanel picks={picks} />)
 
-    const qbGroup = screen
-      .getByRole('heading', { name: 'QB' })
-      .closest('.draft-roster-group')
-    expect(qbGroup).not.toBeNull()
+    const qbLabel = screen
+      .getAllByText('QB')
+      .find((el) => el.classList.contains('draft-roster-slot-label'))
+    const qbSlot = qbLabel?.closest('.draft-roster-slot')
     expect(
-      within(qbGroup as HTMLElement).getByText('Josh Allen'),
-    ).toBeInTheDocument()
-
-    const rbGroup = screen
-      .getByRole('heading', { name: 'RB' })
-      .closest('.draft-roster-group')
-    expect(
-      within(rbGroup as HTMLElement).getByText('Bijan Robinson'),
+      within(qbSlot as HTMLElement).getByText('Josh Allen'),
     ).toBeInTheDocument()
   })
 
-  it('orders known position groups QB/RB/WR/TE/K/DEF', () => {
+  it('sends the extra RB beyond the two RB slots to FLEX', () => {
     const picks = [
-      pick({ platform_player_id: '1', name: 'A Kicker', position: 'K' }),
-      pick({ platform_player_id: '2', name: 'A QB', position: 'QB' }),
-      pick({ platform_player_id: '3', name: 'A WR', position: 'WR' }),
+      pick({ platform_player_id: '1', name: 'RB One', position: 'RB' }),
+      pick({ platform_player_id: '2', name: 'RB Two', position: 'RB' }),
+      pick({ platform_player_id: '3', name: 'RB Three', position: 'RB' }),
     ]
 
     render(<DraftRosterPanel picks={picks} />)
 
-    const headings = screen
-      .getAllByRole('heading', { level: 4 })
-      .map((h) => h.textContent)
-    expect(headings).toEqual(['QB', 'WR', 'K'])
+    const flexSlot = screen.getByText('FLEX').closest('.draft-roster-slot')
+    expect(
+      within(flexSlot as HTMLElement).getByText('RB Three'),
+    ).toBeInTheDocument()
+  })
+
+  it('sends overflow beyond starters and FLEX to the bench', () => {
+    const picks = [
+      pick({ platform_player_id: '1', name: 'RB One', position: 'RB' }),
+      pick({ platform_player_id: '2', name: 'RB Two', position: 'RB' }),
+      pick({ platform_player_id: '3', name: 'RB Three', position: 'RB' }),
+      pick({ platform_player_id: '4', name: 'RB Four', position: 'RB' }),
+    ]
+
+    render(<DraftRosterPanel picks={picks} />)
+
+    expect(screen.getByText('RB Four')).toBeInTheDocument()
+    expect(screen.queryByText('No bench players yet.')).not.toBeInTheDocument()
   })
 })

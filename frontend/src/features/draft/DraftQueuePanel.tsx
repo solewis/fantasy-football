@@ -5,6 +5,7 @@ import './draft.css'
 
 interface DraftQueuePanelProps {
   queue: QueueRow[]
+  canDraft: boolean
   onReorder: (next: QueueRow[]) => void
   onRemove: (playerId: string) => void
   onDraft: (playerId: string) => void
@@ -12,6 +13,7 @@ interface DraftQueuePanelProps {
 
 export function DraftQueuePanel({
   queue,
+  canDraft,
   onReorder,
   onRemove,
   onDraft,
@@ -72,12 +74,14 @@ export function DraftQueuePanel({
             >
               ▼
             </button>
-            <button
-              type="button"
-              onClick={() => onDraft(row.platform_player_id)}
-            >
-              Draft
-            </button>
+            {canDraft && (
+              <button
+                type="button"
+                onClick={() => onDraft(row.platform_player_id)}
+              >
+                Draft
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onRemove(row.platform_player_id)}

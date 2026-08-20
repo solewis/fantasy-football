@@ -8,6 +8,8 @@ function makeStatus(overrides: Partial<DraftStatus> = {}): DraftStatus {
   return {
     draft: {
       id: 1,
+      platform: 'manual',
+      platform_draft_id: null,
       season: '2026',
       format: 'half_ppr',
       num_teams: 4,

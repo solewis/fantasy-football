@@ -7,6 +7,8 @@ import { DraftSetupForm } from './DraftSetupForm'
 const sampleStatus: DraftStatus = {
   draft: {
     id: 1,
+    platform: 'manual',
+    platform_draft_id: null,
     season: '2026',
     format: 'half_ppr',
     num_teams: 10,
@@ -79,5 +81,63 @@ describe('DraftSetupForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start Draft' }))
 
     expect(await screen.findByText(/Creating draft/)).toBeInTheDocument()
+  })
+
+  it('switching to Sleeper mode swaps in the draft-id field', () => {
+    render(<DraftSetupForm onCreated={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Sync from Sleeper' }))
+
+    expect(screen.getByLabelText('Sleeper draft ID')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Number of teams')).not.toBeInTheDocument()
+  })
+
+  it('disables submit until a Sleeper draft ID is entered', () => {
+    render(<DraftSetupForm onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Sync from Sleeper' }))
+
+    expect(screen.getByRole('button', { name: 'Start Draft' })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Sleeper draft ID'), {
+      target: { value: '999' },
+    })
+
+    expect(screen.getByRole('button', { name: 'Start Draft' })).toBeEnabled()
+  })
+
+  it('submits to the Sleeper endpoint with the entered draft ID', async () => {
+    const sleeperStatus: DraftStatus = {
+      ...sampleStatus,
+      draft: {
+        ...sampleStatus.draft,
+        platform: 'sleeper',
+        platform_draft_id: '999',
+      },
+    }
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(sleeperStatus),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const onCreated = vi.fn()
+
+    render(<DraftSetupForm onCreated={onCreated} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Sync from Sleeper' }))
+    fireEvent.change(screen.getByLabelText('Sleeper draft ID'), {
+      target: { value: '999' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Start Draft' }))
+
+    await vi.waitFor(() => {
+      expect(onCreated).toHaveBeenCalledWith(sleeperStatus)
+    })
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/drafts/sleeper')
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body).toMatchObject({
+      platform_draft_id: '999',
+      format: 'half_ppr',
+      my_slot: 1,
+    })
   })
 })

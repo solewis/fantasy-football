@@ -5,6 +5,8 @@ import {
   fetchQueue,
   makePick,
   saveQueue,
+  switchToManual,
+  syncSleeperDraft,
   undoLastPick,
   type DraftStatus,
   type QueueRow,
@@ -53,11 +55,54 @@ export function DraftPage() {
     }
   }, [draftId])
 
+  const SYNC_INTERVAL_MS = 5000
+
+  useEffect(() => {
+    if (draftId === null) return
+    if (status?.draft.platform !== 'sleeper' || status.is_complete) return
+
+    const interval = setInterval(() => {
+      Promise.all([syncSleeperDraft(draftId), fetchQueue(draftId)])
+        .then(([statusResult, queueResult]) => {
+          setStatus(statusResult)
+          setQueue(queueResult)
+          setError(null)
+        })
+        .catch((err: unknown) => {
+          setError(
+            err instanceof Error ? err.message : 'Failed to sync from Sleeper',
+          )
+        })
+    }, SYNC_INTERVAL_MS)
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [draftId, status?.draft.platform, status?.is_complete])
+
   function handleCreated(newStatus: DraftStatus) {
     localStorage.setItem(ACTIVE_DRAFT_KEY, String(newStatus.draft.id))
     setDraftId(newStatus.draft.id)
     setStatus(newStatus)
     setQueue([])
+  }
+
+  function handleSwitchToManual() {
+    if (draftId === null) return
+    if (
+      !window.confirm(
+        'Switch this draft to manual entry? Live sync from Sleeper will stop.',
+      )
+    ) {
+      return
+    }
+    switchToManual(draftId)
+      .then(setStatus)
+      .catch((err: unknown) =>
+        setError(
+          err instanceof Error ? err.message : 'Failed to switch to manual',
+        ),
+      )
   }
 
   function handleNewDraft() {
@@ -159,6 +204,7 @@ export function DraftPage() {
   const myPicks = status.picks.filter(
     (pick) => pick.slot === status.draft.my_slot,
   )
+  const isSleeperSynced = status.draft.platform === 'sleeper'
 
   return (
     <div className="draft-page">
@@ -166,6 +212,11 @@ export function DraftPage() {
 
       <div className="draft-page-header">
         <div className="draft-page-status-line">
+          {isSleeperSynced && (
+            <span className="draft-page-sleeper-badge">
+              Synced from Sleeper
+            </span>
+          )}
           {status.is_complete ? (
             <strong>Draft complete</strong>
           ) : (
@@ -183,13 +234,19 @@ export function DraftPage() {
           )}
         </div>
         <div className="draft-page-header-actions">
-          <button
-            type="button"
-            onClick={handleUndo}
-            disabled={status.picks.length === 0}
-          >
-            Undo last pick
-          </button>
+          {isSleeperSynced ? (
+            <button type="button" onClick={handleSwitchToManual}>
+              Switch to manual
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={status.picks.length === 0}
+            >
+              Undo last pick
+            </button>
+          )}
           <button type="button" onClick={handleNewDraft}>
             New Draft
           </button>
@@ -203,12 +260,14 @@ export function DraftPage() {
           format={status.draft.format}
           draftedIds={draftedIds}
           queuedIds={queuedIds}
+          canDraft={!isSleeperSynced}
           onDraft={handleDraftPlayer}
           onQueue={handleAddToQueue}
         />
         <DraftSidePanel
           queue={queue}
           myPicks={myPicks}
+          canDraft={!isSleeperSynced}
           onReorderQueue={handleReorderQueue}
           onRemoveFromQueue={handleRemoveFromQueue}
           onDraftFromQueue={handleDraftPlayer}

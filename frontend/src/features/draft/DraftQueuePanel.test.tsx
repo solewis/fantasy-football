@@ -19,6 +19,7 @@ describe('DraftQueuePanel', () => {
     render(
       <DraftQueuePanel
         queue={[]}
+        canDraft={true}
         onReorder={vi.fn()}
         onRemove={vi.fn()}
         onDraft={vi.fn()}
@@ -32,6 +33,7 @@ describe('DraftQueuePanel', () => {
     render(
       <DraftQueuePanel
         queue={queue}
+        canDraft={true}
         onReorder={vi.fn()}
         onRemove={vi.fn()}
         onDraft={vi.fn()}
@@ -48,6 +50,7 @@ describe('DraftQueuePanel', () => {
     render(
       <DraftQueuePanel
         queue={queue}
+        canDraft={true}
         onReorder={onReorder}
         onRemove={vi.fn()}
         onDraft={vi.fn()}
@@ -65,6 +68,7 @@ describe('DraftQueuePanel', () => {
     render(
       <DraftQueuePanel
         queue={queue}
+        canDraft={true}
         onReorder={vi.fn()}
         onRemove={vi.fn()}
         onDraft={vi.fn()}
@@ -84,6 +88,7 @@ describe('DraftQueuePanel', () => {
     render(
       <DraftQueuePanel
         queue={queue}
+        canDraft={true}
         onReorder={vi.fn()}
         onRemove={vi.fn()}
         onDraft={onDraft}
@@ -100,6 +105,7 @@ describe('DraftQueuePanel', () => {
     render(
       <DraftQueuePanel
         queue={queue}
+        canDraft={true}
         onReorder={vi.fn()}
         onRemove={onRemove}
         onDraft={vi.fn()}
@@ -111,5 +117,21 @@ describe('DraftQueuePanel', () => {
     )
 
     expect(onRemove).toHaveBeenCalledWith('2')
+  })
+
+  it('hides the Draft button when canDraft is false', () => {
+    render(
+      <DraftQueuePanel
+        queue={queue}
+        canDraft={false}
+        onReorder={vi.fn()}
+        onRemove={vi.fn()}
+        onDraft={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Draft' }),
+    ).not.toBeInTheDocument()
   })
 })

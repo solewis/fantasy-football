@@ -4,6 +4,7 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.draft_logic import pick_to_round_and_slot, total_picks
+from app.ingest import sleeper_draft
 from app.models import Draft, DraftPick, DraftQueueEntry, PlatformPlayer
 
 PLATFORM = "sleeper"
@@ -34,6 +35,85 @@ def create_draft(
     session.commit()
     session.refresh(draft)
     return draft
+
+
+def create_sleeper_draft(
+    session: Session,
+    platform_draft_id: str,
+    format: str,
+    my_slot: int,
+) -> Draft:
+    try:
+        raw = sleeper_draft.fetch_raw_draft(platform_draft_id)
+        meta = sleeper_draft.parse_draft_meta(raw)
+    except sleeper_draft.SleeperFetchError as exc:
+        raise DraftError(str(exc)) from exc
+
+    draft = Draft(
+        platform=PLATFORM,
+        platform_draft_id=platform_draft_id,
+        season=meta["season"],
+        format=format,
+        num_teams=meta["num_teams"],
+        num_rounds=meta["num_rounds"],
+        my_slot=my_slot,
+        created_at=datetime.now(UTC),
+    )
+    session.add(draft)
+    session.commit()
+    session.refresh(draft)
+    return draft
+
+
+def sync_sleeper_draft(session: Session, draft_id: int) -> dict:
+    draft = get_draft(session, draft_id)
+    if draft is None:
+        raise DraftError("Draft not found")
+    if draft.platform != PLATFORM or not draft.platform_draft_id:
+        raise DraftError("Draft is not linked to a Sleeper draft")
+
+    try:
+        raw_picks = sleeper_draft.fetch_raw_picks(draft.platform_draft_id)
+    except sleeper_draft.SleeperFetchError as exc:
+        raise DraftError(str(exc)) from exc
+
+    parsed = sleeper_draft.parse_picks(raw_picks)
+    existing_numbers = {
+        row.pick_number
+        for row in session.query(DraftPick.pick_number).filter_by(draft_id=draft_id).all()
+    }
+
+    new_player_ids = []
+    for entry in parsed:
+        if entry["pick_number"] in existing_numbers:
+            continue
+        session.add(
+            DraftPick(
+                draft_id=draft_id,
+                pick_number=entry["pick_number"],
+                platform_player_id=entry["platform_player_id"],
+            )
+        )
+        new_player_ids.append(entry["platform_player_id"])
+
+    if new_player_ids:
+        session.query(DraftQueueEntry).filter(
+            DraftQueueEntry.draft_id == draft_id,
+            DraftQueueEntry.platform_player_id.in_(new_player_ids),
+        ).delete(synchronize_session=False)
+
+    session.commit()
+    return get_status(session, draft_id)
+
+
+def switch_to_manual(session: Session, draft_id: int) -> dict:
+    draft = get_draft(session, draft_id)
+    if draft is None:
+        raise DraftError("Draft not found")
+
+    draft.platform = "manual"
+    session.commit()
+    return get_status(session, draft_id)
 
 
 def get_draft(session: Session, draft_id: int) -> Draft | None:
@@ -79,6 +159,8 @@ def make_pick(session: Session, draft_id: int, platform_player_id: str) -> dict:
     draft = get_draft(session, draft_id)
     if draft is None:
         raise DraftError("Draft not found")
+    if draft.platform == PLATFORM:
+        raise DraftError("This draft is synced live from Sleeper; picks can't be entered manually")
 
     existing_count = session.query(DraftPick).filter_by(draft_id=draft_id).count()
     if existing_count >= total_picks(draft.num_teams, draft.num_rounds):
@@ -107,6 +189,10 @@ def make_pick(session: Session, draft_id: int, platform_player_id: str) -> dict:
 
 
 def undo_last_pick(session: Session, draft_id: int) -> dict | None:
+    draft = get_draft(session, draft_id)
+    if draft is not None and draft.platform == PLATFORM:
+        raise DraftError("This draft is synced live from Sleeper; picks can't be undone manually")
+
     last = (
         session.query(DraftPick)
         .filter_by(draft_id=draft_id)
@@ -139,6 +225,8 @@ def get_status(session: Session, draft_id: int) -> dict | None:
     return {
         "draft": {
             "id": draft.id,
+            "platform": draft.platform,
+            "platform_draft_id": draft.platform_draft_id,
             "season": draft.season,
             "format": draft.format,
             "num_teams": draft.num_teams,

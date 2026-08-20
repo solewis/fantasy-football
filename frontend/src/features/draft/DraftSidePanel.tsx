@@ -9,6 +9,7 @@ interface DraftSidePanelProps {
   queue: QueueRow[]
   myPicks: PickRow[]
   canDraft: boolean
+  rosterPositions?: string[]
   onReorderQueue: (next: QueueRow[]) => void
   onRemoveFromQueue: (playerId: string) => void
   onDraftFromQueue: (playerId: string) => void
@@ -20,6 +21,7 @@ export function DraftSidePanel({
   queue,
   myPicks,
   canDraft,
+  rosterPositions,
   onReorderQueue,
   onRemoveFromQueue,
   onDraftFromQueue,
@@ -62,7 +64,7 @@ export function DraftSidePanel({
             onDraft={onDraftFromQueue}
           />
         ) : (
-          <DraftRosterPanel picks={myPicks} />
+          <DraftRosterPanel picks={myPicks} rosterPositions={rosterPositions} />
         )}
       </div>
     </div>

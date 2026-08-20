@@ -27,7 +27,9 @@ export function DraftBoard({ status }: DraftBoardProps) {
                 key={slot}
                 className={slot === draft.my_slot ? 'my-team' : ''}
               >
-                {slot === draft.my_slot ? 'You' : `Team ${slot}`}
+                {slot === draft.my_slot
+                  ? 'You'
+                  : (draft.team_names[String(slot)] ?? `Team ${slot}`)}
               </th>
             ))}
           </tr>

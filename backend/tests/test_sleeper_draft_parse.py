@@ -14,6 +14,7 @@ RAW_DRAFT = {
     "season": "2026",
     "settings": {"teams": 10, "rounds": 14},
     "draft_id": "123456789",
+    "slot_to_roster_id": {"1": 10, "2": 3},
 }
 
 RAW_PICKS = [
@@ -48,12 +49,25 @@ RAW_PICKS = [
 def test_parse_draft_meta_extracts_season_teams_rounds():
     meta = parse_draft_meta(RAW_DRAFT)
 
-    assert meta == {"season": "2026", "num_teams": 10, "num_rounds": 14}
+    assert meta == {
+        "season": "2026",
+        "num_teams": 10,
+        "num_rounds": 14,
+        "slot_to_roster_id": {"1": 10, "2": 3},
+    }
 
 
 def test_parse_draft_meta_raises_when_settings_missing():
     with pytest.raises(SleeperFetchError):
         parse_draft_meta({"season": "2026", "settings": {}})
+
+
+def test_parse_draft_meta_defaults_slot_to_roster_id_to_empty_pre_draft():
+    raw = {**RAW_DRAFT, "slot_to_roster_id": None}
+
+    meta = parse_draft_meta(raw)
+
+    assert meta["slot_to_roster_id"] == {}
 
 
 def test_parse_picks_normalizes_made_picks():

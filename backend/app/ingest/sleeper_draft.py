@@ -75,6 +75,9 @@ def parse_draft_meta(raw: dict) -> dict:
         "season": str(season),
         "num_teams": int(num_teams),
         "num_rounds": int(num_rounds),
+        # draft-slot (str) -> roster_id (int). Sleeper only assigns this once the
+        # draft's order is set -- can be {} pre-draft, that's not an error here.
+        "slot_to_roster_id": raw.get("slot_to_roster_id") or {},
     }
 
 

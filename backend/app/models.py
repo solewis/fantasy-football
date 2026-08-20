@@ -168,9 +168,10 @@ class League(Base):
 
 
 class Draft(Base):
-    """A local, manually-tracked draft session -- not yet linked to a real platform draft
-    (that's Phase 6, live Sleeper sync). `platform` is included now so a future sync can
-    slot in `platform_draft_id` without reshaping this table.
+    """A local draft session. `platform` is "manual" (typed in) or "sleeper" (synced
+    live from Sleeper's own draft-picks endpoint). `league_id` is a plain, nullable
+    reference to a League -- set only when the draft was created *from* a saved
+    League (League setup's Phase C); a raw Sleeper-draft-ID or manual draft has none.
     """
 
     __tablename__ = "drafts"
@@ -178,11 +179,19 @@ class Draft(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     platform: Mapped[str] = mapped_column(String, default="manual")
     platform_draft_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    league_id: Mapped[int | None] = mapped_column(ForeignKey("leagues.id"), nullable=True)
     season: Mapped[str] = mapped_column(String, index=True)
     format: Mapped[str] = mapped_column(String, index=True)
     num_teams: Mapped[int] = mapped_column(Integer)
     num_rounds: Mapped[int] = mapped_column(Integer)
     my_slot: Mapped[int] = mapped_column(Integer)
+    # {draft_slot (as a string): team name}, resolved from Sleeper's own
+    # slot_to_roster_id (per-draft, since snake-order slot assignment isn't known
+    # at the League level) joined against League.team_names (roster ownership).
+    # Null until that mapping is available (Sleeper only assigns it once the
+    # draft's order is set, which can be after league creation but before the
+    # draft starts) -- refreshed on each sync, not just at creation.
+    team_names: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 

@@ -50,14 +50,21 @@ function jsonResponse(body: unknown) {
 function mockFetch({
   ranks = [],
   players = adpPlayers,
-}: { ranks?: RankRow[]; players?: PlayerRow[] } = {}) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((url: string) => {
-      if (url.includes('/ranks')) return Promise.resolve(jsonResponse(ranks))
-      return Promise.resolve(jsonResponse(players))
-    }),
-  )
+  rankSetRanks = [],
+}: {
+  ranks?: RankRow[]
+  players?: PlayerRow[]
+  rankSetRanks?: RankRow[]
+} = {}) {
+  const fetchMock = vi.fn((url: string) => {
+    if (url.includes('/rank-sets/')) {
+      return Promise.resolve(jsonResponse(rankSetRanks))
+    }
+    if (url.includes('/ranks')) return Promise.resolve(jsonResponse(ranks))
+    return Promise.resolve(jsonResponse(players))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
 }
 
 beforeEach(() => {
@@ -81,6 +88,29 @@ describe('DraftPlayerPool', () => {
 
     expect(await screen.findByText("Ja'Marr Chase")).toBeInTheDocument()
     expect(screen.getByText('Bijan Robinson')).toBeInTheDocument()
+  })
+
+  it('reads the assigned rank set directly when rankSetId is given', async () => {
+    const fetchMock = mockFetch({ rankSetRanks: savedRanks })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        rankSetId={5}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByText('Bijan Robinson')).toBeInTheDocument()
+    const calledUrls = fetchMock.mock.calls.map(([url]) => url as string)
+    expect(calledUrls.some((url) => url.includes('/rank-sets/5/ranks'))).toBe(
+      true,
+    )
+    expect(calledUrls.some((url) => url.includes('/ranks?'))).toBe(false)
   })
 
   it('excludes already-drafted players', async () => {

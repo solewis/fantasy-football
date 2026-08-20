@@ -2,11 +2,15 @@ export interface DraftSettings {
   id: number
   platform: string
   platform_draft_id: string | null
+  league_id: number | null
   season: string
   format: string
   num_teams: number
   num_rounds: number
   my_slot: number
+  rank_set_id: number | null
+  roster_positions: string[] | null
+  team_names: Record<string, string>
 }
 
 export interface PickRow {
@@ -50,6 +54,11 @@ export interface CreateSleeperDraftParams {
   my_slot: number
 }
 
+export interface CreateDraftFromLeagueParams {
+  league_id: number
+  my_slot: number
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000'
 
 async function parseOrThrow<T>(response: Response, label: string): Promise<T> {
@@ -88,6 +97,17 @@ export async function createSleeperDraft(
     body: JSON.stringify(params),
   })
   return parseOrThrow(response, 'Creating Sleeper draft')
+}
+
+export async function createDraftFromLeague(
+  params: CreateDraftFromLeagueParams,
+): Promise<DraftStatus> {
+  const response = await fetch(`${API_BASE}/drafts/league`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return parseOrThrow(response, 'Creating draft from league')
 }
 
 export async function fetchDraftStatus(draftId: number): Promise<DraftStatus> {

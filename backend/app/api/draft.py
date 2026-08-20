@@ -8,6 +8,7 @@ from app.db import get_db
 from app.draft import (
     DraftError,
     create_draft,
+    create_draft_from_league,
     create_sleeper_draft,
     get_status,
     list_queue,
@@ -37,15 +38,24 @@ class CreateSleeperDraftRequest(BaseModel):
     my_slot: int
 
 
+class CreateDraftFromLeagueRequest(BaseModel):
+    league_id: int
+    my_slot: int
+
+
 class DraftSummary(BaseModel):
     id: int
     platform: str
     platform_draft_id: str | None
+    league_id: int | None
     season: str
     format: str
     num_teams: int
     num_rounds: int
     my_slot: int
+    rank_set_id: int | None
+    roster_positions: list[str] | None
+    team_names: dict[str, str]
 
 
 class PickRow(BaseModel):
@@ -104,6 +114,16 @@ def post_draft(payload: CreateDraftRequest, db: DbSession) -> DraftStatus:
 def post_sleeper_draft(payload: CreateSleeperDraftRequest, db: DbSession) -> DraftStatus:
     try:
         draft = create_sleeper_draft(db, payload.platform_draft_id, payload.format, payload.my_slot)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    status = get_status(db, draft.id)
+    return DraftStatus(**status)
+
+
+@router.post("/league", response_model=DraftStatus)
+def post_draft_from_league(payload: CreateDraftFromLeagueRequest, db: DbSession) -> DraftStatus:
+    try:
+        draft = create_draft_from_league(db, payload.league_id, payload.my_slot)
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     status = get_status(db, draft.id)

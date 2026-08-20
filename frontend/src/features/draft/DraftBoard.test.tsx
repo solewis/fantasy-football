@@ -10,11 +10,15 @@ function makeStatus(overrides: Partial<DraftStatus> = {}): DraftStatus {
       id: 1,
       platform: 'manual',
       platform_draft_id: null,
+      league_id: null,
       season: '2026',
       format: 'half_ppr',
       num_teams: 4,
       num_rounds: 2,
       my_slot: 2,
+      rank_set_id: null,
+      roster_positions: null,
+      team_names: {},
     },
     picks: [],
     next_pick_number: 1,
@@ -79,5 +83,23 @@ describe('DraftBoard', () => {
 
     const currentCell = screen.getByText('2.3').closest('td')
     expect(currentCell).toHaveClass('current')
+  })
+
+  it('shows a real team name for a slot when team_names has one', () => {
+    const status = makeStatus()
+    status.draft.team_names = { '1': 'Bourrow my Toe', '3': 'Rowdy Owls' }
+
+    render(<DraftBoard status={status} />)
+
+    expect(
+      screen.getByRole('columnheader', { name: 'Bourrow my Toe' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: 'Rowdy Owls' }),
+    ).toBeInTheDocument()
+    // slot 4 has no entry in team_names -- falls back to the generic label
+    expect(
+      screen.getByRole('columnheader', { name: 'Team 4' }),
+    ).toBeInTheDocument()
   })
 })

@@ -1,5 +1,31 @@
-from app.ingest import sleeper_draft
-from app.models import PlatformPlayer
+from datetime import UTC, datetime
+
+from app.ingest import sleeper_draft, sleeper_league
+from app.models import League, PlatformPlayer
+
+
+def seed_league(session_factory, **overrides) -> int:
+    session = session_factory()
+    league = League(
+        platform="sleeper",
+        platform_league_id="777",
+        name="Test League",
+        season="2026",
+        format="half_ppr",
+        num_teams=2,
+        roster_positions=["QB", "RB"],
+        team_names={"10": "My Team", "3": "Rival"},
+        rank_set_id=None,
+        created_at=datetime.now(UTC),
+    )
+    for key, value in overrides.items():
+        setattr(league, key, value)
+    session.add(league)
+    session.commit()
+    session.refresh(league)
+    league_id = league.id
+    session.close()
+    return league_id
 
 
 def seed(session_factory) -> None:
@@ -234,3 +260,45 @@ def test_post_switch_to_manual_allows_picks_afterward(api_client, monkeypatch):
 
     pick_response = client.post(f"/drafts/{draft_id}/picks", json={"platform_player_id": "1"})
     assert pick_response.status_code == 200
+
+
+def test_post_draft_from_league_creates_and_returns_status(api_client, monkeypatch):
+    client, session_factory = api_client
+    seed(session_factory)
+    league_id = seed_league(session_factory)
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {"draft_id": "555"})
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {
+            "season": "2026",
+            "settings": {"teams": 2, "rounds": 2},
+            "slot_to_roster_id": {"1": 10, "2": 3},
+        },
+    )
+
+    response = client.post("/drafts/league", json={"league_id": league_id, "my_slot": 1})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["draft"]["league_id"] == league_id
+    assert body["draft"]["platform_draft_id"] == "555"
+    assert body["draft"]["team_names"] == {"1": "My Team", "2": "Rival"}
+
+
+def test_post_draft_from_league_unknown_league_is_400(api_client):
+    client, _session_factory = api_client
+
+    response = client.post("/drafts/league", json={"league_id": 999, "my_slot": 1})
+
+    assert response.status_code == 400
+
+
+def test_post_draft_from_league_no_active_draft_is_400(api_client, monkeypatch):
+    client, session_factory = api_client
+    league_id = seed_league(session_factory)
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {})
+
+    response = client.post("/drafts/league", json={"league_id": league_id, "my_slot": 1})
+
+    assert response.status_code == 400

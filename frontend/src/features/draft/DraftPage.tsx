@@ -258,6 +258,7 @@ export function DraftPage() {
       <div className="draft-page-lower">
         <DraftPlayerPool
           format={status.draft.format}
+          rankSetId={status.draft.rank_set_id}
           draftedIds={draftedIds}
           queuedIds={queuedIds}
           canDraft={!isSleeperSynced}
@@ -268,6 +269,7 @@ export function DraftPage() {
           queue={queue}
           myPicks={myPicks}
           canDraft={!isSleeperSynced}
+          rosterPositions={status.draft.roster_positions ?? undefined}
           onReorderQueue={handleReorderQueue}
           onRemoveFromQueue={handleRemoveFromQueue}
           onDraftFromQueue={handleDraftPlayer}

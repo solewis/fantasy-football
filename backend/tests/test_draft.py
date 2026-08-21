@@ -437,6 +437,17 @@ def test_create_draft_from_league_raises_when_league_not_found():
         draft.create_draft_from_league(session, 999, my_slot=1)
 
 
+def test_create_draft_from_league_raises_when_slot_out_of_range():
+    session = make_session()
+    league = make_league(session)  # num_teams defaults to 2
+
+    with pytest.raises(draft.DraftError, match="between 1 and 2"):
+        draft.create_draft_from_league(session, league.id, my_slot=3)
+
+    with pytest.raises(draft.DraftError, match="between 1 and 2"):
+        draft.create_draft_from_league(session, league.id, my_slot=0)
+
+
 def test_create_draft_from_league_raises_when_no_active_draft(monkeypatch):
     session = make_session()
     league = make_league(session)
@@ -546,3 +557,64 @@ def test_get_status_has_null_rank_set_and_roster_positions_for_non_league_draft(
     assert status["draft"]["rank_set_id"] is None
     assert status["draft"]["roster_positions"] is None
     assert status["draft"]["team_names"] == {}
+
+
+def test_list_drafts_empty():
+    session = make_session()
+
+    assert draft.list_drafts(session) == []
+
+
+def test_list_drafts_unfiltered_returns_all_newest_first():
+    session = make_session()
+    first = make_small_draft(session)
+    second = make_small_draft(session)
+
+    rows = draft.list_drafts(session)
+
+    assert [row["id"] for row in rows] == [second.id, first.id]
+
+
+def test_list_drafts_filters_by_league_id():
+    session = make_session()
+    league = make_league(session)
+    make_small_draft(session)  # a manual draft with no league -- must be excluded
+    league_draft = make_small_draft(session)
+    league_draft.league_id = league.id
+    session.commit()
+
+    rows = draft.list_drafts(session, league_id=league.id)
+
+    assert [row["id"] for row in rows] == [league_draft.id]
+
+
+def test_list_drafts_reports_pick_count_and_round_progress():
+    session = make_session()
+    seed_players(session)
+    created = make_small_draft(session, num_teams=2, num_rounds=2)
+    draft.make_pick(session, created.id, "1")
+    draft.make_pick(session, created.id, "2")
+    draft.make_pick(session, created.id, "3")
+
+    rows = draft.list_drafts(session)
+
+    row = rows[0]
+    assert row["pick_count"] == 3
+    assert row["next_pick_number"] == 4
+    assert row["current_round"] == 2
+    assert row["is_complete"] is False
+
+
+def test_list_drafts_marks_a_full_draft_complete():
+    session = make_session()
+    seed_players(session)
+    created = make_small_draft(session, num_teams=2, num_rounds=2)
+    for player_id in ("1", "2", "3", "4"):
+        draft.make_pick(session, created.id, player_id)
+
+    row = draft.list_drafts(session)[0]
+
+    assert row["pick_count"] == 4
+    assert row["is_complete"] is True
+    assert row["next_pick_number"] is None
+    assert row["current_round"] is None

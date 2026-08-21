@@ -59,7 +59,41 @@ export interface CreateDraftFromLeagueParams {
   my_slot: number
 }
 
+/** A lightweight per-draft summary from `GET /drafts` -- not a full
+ * DraftStatus (no picks, no rank_set_id/roster_positions). Used by the
+ * Leagues list/detail views to show "is there a draft, and how far along."
+ */
+export interface DraftListRow {
+  id: number
+  platform: string
+  league_id: number | null
+  season: string
+  format: string
+  num_teams: number
+  num_rounds: number
+  my_slot: number
+  pick_count: number
+  next_pick_number: number | null
+  current_round: number | null
+  is_complete: boolean
+  created_at: string
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000'
+
+/** Thrown by parseOrThrow with the real HTTP status attached, so a caller can
+ * distinguish "not found" (safe to fall back to a fresh setup flow) from a
+ * transient failure (should surface as an error, not silently invite creating
+ * a duplicate draft).
+ */
+export class ApiError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
 
 async function parseOrThrow<T>(response: Response, label: string): Promise<T> {
   if (!response.ok) {
@@ -70,8 +104,9 @@ async function parseOrThrow<T>(response: Response, label: string): Promise<T> {
     } catch {
       // response body wasn't JSON -- fall back to just the status code
     }
-    throw new Error(
+    throw new ApiError(
       detail ? `${label}: ${detail}` : `${label} failed: ${response.status}`,
+      response.status,
     )
   }
   return response.json() as Promise<T>
@@ -108,6 +143,12 @@ export async function createDraftFromLeague(
     body: JSON.stringify(params),
   })
   return parseOrThrow(response, 'Creating draft from league')
+}
+
+export async function fetchDrafts(leagueId?: number): Promise<DraftListRow[]> {
+  const query = leagueId != null ? `?league_id=${leagueId}` : ''
+  const response = await fetch(`${API_BASE}/drafts${query}`)
+  return parseOrThrow(response, 'Fetching drafts')
 }
 
 export async function fetchDraftStatus(draftId: number): Promise<DraftStatus> {

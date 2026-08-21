@@ -1,280 +1,67 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
-import {
-  fetchDraftStatus,
-  fetchQueue,
-  makePick,
-  saveQueue,
-  switchToManual,
-  syncSleeperDraft,
-  undoLastPick,
-  type DraftStatus,
-  type QueueRow,
-} from '../../api/draft'
-import { DraftBoard } from './DraftBoard'
-import { DraftPlayerPool } from './DraftPlayerPool'
+import type { DraftStatus } from '../../api/draft'
+import { DraftRoom } from './DraftRoom'
 import { DraftSetupForm } from './DraftSetupForm'
-import { DraftSidePanel } from './DraftSidePanel'
 import './draft.css'
 
 const ACTIVE_DRAFT_KEY = 'fantasy-draft-app:activeDraftId'
 
+/** The ad-hoc draft entry point (manual entry / raw Sleeper draft ID) --
+ * reachable as a secondary path off the Leagues page, not a top-level tab.
+ * Tracks "the" active ad-hoc draft via a single localStorage slot, same as
+ * before Draft nested under League -- there's still only ever one ad-hoc
+ * draft in flight at a time, unlike leagues' drafts (each league's current
+ * draft is discoverable via GET /drafts?league_id=, no client-side pointer
+ * needed there).
+ */
 export function DraftPage() {
   const [draftId, setDraftId] = useState<number | null>(() => {
     const stored = localStorage.getItem(ACTIVE_DRAFT_KEY)
     return stored ? Number(stored) : null
   })
-  const [status, setStatus] = useState<DraftStatus | null>(null)
-  const [queue, setQueue] = useState<QueueRow[]>([])
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (draftId === null) return
-    let cancelled = false
-
-    Promise.all([fetchDraftStatus(draftId), fetchQueue(draftId)])
-      .then(([statusResult, queueResult]) => {
-        if (cancelled) return
-        setStatus(statusResult)
-        setQueue(queueResult)
-        setError(null)
-      })
-      .catch(() => {
-        if (cancelled) return
-        // The stored draft id no longer resolves to anything real (e.g. it
-        // was deleted) -- rather than stranding the user on a dead-end error
-        // page with no way back, quietly fall back to the setup form.
-        localStorage.removeItem(ACTIVE_DRAFT_KEY)
-        setDraftId(null)
-        setStatus(null)
-        setQueue([])
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [draftId])
-
-  const SYNC_INTERVAL_MS = 5000
-
-  useEffect(() => {
-    if (draftId === null) return
-    if (status?.draft.platform !== 'sleeper' || status.is_complete) return
-
-    const interval = setInterval(() => {
-      Promise.all([syncSleeperDraft(draftId), fetchQueue(draftId)])
-        .then(([statusResult, queueResult]) => {
-          setStatus(statusResult)
-          setQueue(queueResult)
-          setError(null)
-        })
-        .catch((err: unknown) => {
-          setError(
-            err instanceof Error ? err.message : 'Failed to sync from Sleeper',
-          )
-        })
-    }, SYNC_INTERVAL_MS)
-
-    return () => {
-      clearInterval(interval)
-    }
-  }, [draftId, status?.draft.platform, status?.is_complete])
+  const [confirmingNewDraft, setConfirmingNewDraft] = useState(false)
 
   function handleCreated(newStatus: DraftStatus) {
     localStorage.setItem(ACTIVE_DRAFT_KEY, String(newStatus.draft.id))
     setDraftId(newStatus.draft.id)
-    setStatus(newStatus)
-    setQueue([])
   }
 
-  function handleSwitchToManual() {
-    if (draftId === null) return
-    if (
-      !window.confirm(
-        'Switch this draft to manual entry? Live sync from Sleeper will stop.',
-      )
-    ) {
-      return
-    }
-    switchToManual(draftId)
-      .then(setStatus)
-      .catch((err: unknown) =>
-        setError(
-          err instanceof Error ? err.message : 'Failed to switch to manual',
-        ),
-      )
+  function handleUnavailable() {
+    localStorage.removeItem(ACTIVE_DRAFT_KEY)
+    setDraftId(null)
   }
 
   function handleNewDraft() {
-    if (
-      !window.confirm(
-        'Start a new draft? Your current draft is kept, you just switch away from it.',
-      )
-    ) {
-      return
-    }
     localStorage.removeItem(ACTIVE_DRAFT_KEY)
     setDraftId(null)
-    setStatus(null)
-    setQueue([])
-    setError(null)
-  }
-
-  async function refetchAll(id: number) {
-    const [statusResult, queueResult] = await Promise.all([
-      fetchDraftStatus(id),
-      fetchQueue(id),
-    ])
-    setStatus(statusResult)
-    setQueue(queueResult)
-  }
-
-  async function handleDraftPlayer(playerId: string) {
-    if (draftId === null) return
-    try {
-      await makePick(draftId, playerId)
-      await refetchAll(draftId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to make pick')
-    }
-  }
-
-  async function handleUndo() {
-    if (draftId === null) return
-    try {
-      await undoLastPick(draftId)
-      await refetchAll(draftId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to undo pick')
-    }
-  }
-
-  function handleAddToQueue(playerId: string) {
-    if (draftId === null) return
-    if (queue.some((row) => row.platform_player_id === playerId)) return
-
-    const nextIds = [...queue.map((row) => row.platform_player_id), playerId]
-    saveQueue(draftId, nextIds)
-      .then(() => fetchQueue(draftId))
-      .then(setQueue)
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : 'Failed to update queue'),
-      )
-  }
-
-  function handleReorderQueue(next: QueueRow[]) {
-    if (draftId === null) return
-    setQueue(next)
-    saveQueue(
-      draftId,
-      next.map((row) => row.platform_player_id),
-    ).catch(() => {
-      fetchQueue(draftId)
-        .then(setQueue)
-        .catch(() => undefined)
-    })
-  }
-
-  function handleRemoveFromQueue(playerId: string) {
-    if (draftId === null) return
-    const next = queue.filter((row) => row.platform_player_id !== playerId)
-    setQueue(next)
-    saveQueue(
-      draftId,
-      next.map((row) => row.platform_player_id),
-    ).catch(() => {
-      fetchQueue(draftId)
-        .then(setQueue)
-        .catch(() => undefined)
-    })
+    setConfirmingNewDraft(false)
   }
 
   if (draftId === null) {
     return <DraftSetupForm onCreated={handleCreated} />
   }
 
-  if (!status) {
-    return <p className="draft-page-status">Loading draft…</p>
-  }
-
-  const draftedIds = new Set(
-    status.picks.map((pick) => pick.platform_player_id),
+  const newDraftControl = confirmingNewDraft ? (
+    <>
+      <button type="button" onClick={handleNewDraft}>
+        Confirm new draft?
+      </button>
+      <button type="button" onClick={() => setConfirmingNewDraft(false)}>
+        Cancel
+      </button>
+    </>
+  ) : (
+    <button type="button" onClick={() => setConfirmingNewDraft(true)}>
+      New Draft
+    </button>
   )
-  const queuedIds = new Set(queue.map((row) => row.platform_player_id))
-  const myPicks = status.picks.filter(
-    (pick) => pick.slot === status.draft.my_slot,
-  )
-  const isSleeperSynced = status.draft.platform === 'sleeper'
 
   return (
-    <div className="draft-page">
-      {error && <p className="draft-page-inline-error">{error}</p>}
-
-      <div className="draft-page-header">
-        <div className="draft-page-status-line">
-          {isSleeperSynced && (
-            <span className="draft-page-sleeper-badge">
-              Synced from Sleeper
-            </span>
-          )}
-          {status.is_complete ? (
-            <strong>Draft complete</strong>
-          ) : (
-            <>
-              <strong>
-                Round {status.current_round}, Pick {status.next_pick_number}
-              </strong>{' '}
-              —{' '}
-              {status.is_my_turn ? (
-                <span className="draft-my-turn">Your pick!</span>
-              ) : (
-                `Team ${status.current_slot} is on the clock`
-              )}
-            </>
-          )}
-        </div>
-        <div className="draft-page-header-actions">
-          {isSleeperSynced ? (
-            <button type="button" onClick={handleSwitchToManual}>
-              Switch to manual
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleUndo}
-              disabled={status.picks.length === 0}
-            >
-              Undo last pick
-            </button>
-          )}
-          <button type="button" onClick={handleNewDraft}>
-            New Draft
-          </button>
-        </div>
-      </div>
-
-      <DraftBoard status={status} />
-
-      <div className="draft-page-lower">
-        <DraftPlayerPool
-          format={status.draft.format}
-          rankSetId={status.draft.rank_set_id}
-          draftedIds={draftedIds}
-          queuedIds={queuedIds}
-          canDraft={!isSleeperSynced}
-          onDraft={handleDraftPlayer}
-          onQueue={handleAddToQueue}
-        />
-        <DraftSidePanel
-          queue={queue}
-          myPicks={myPicks}
-          canDraft={!isSleeperSynced}
-          rosterPositions={status.draft.roster_positions ?? undefined}
-          onReorderQueue={handleReorderQueue}
-          onRemoveFromQueue={handleRemoveFromQueue}
-          onDraftFromQueue={handleDraftPlayer}
-        />
-      </div>
-    </div>
+    <DraftRoom
+      draftId={draftId}
+      headerActions={newDraftControl}
+      onUnavailable={handleUnavailable}
+    />
   )
 }

@@ -155,6 +155,39 @@ def test_delete_league_removes_it(monkeypatch):
     assert session.get(League, created.id) is None
 
 
+def test_delete_league_cascades_its_drafts_picks_and_queue(monkeypatch):
+    from app import draft as draft_service
+    from app.ingest import sleeper_draft
+    from app.models import Draft, DraftPick, DraftQueueEntry, PlatformPlayer
+
+    session = make_session()
+    stub_sleeper(monkeypatch)
+    created = league.create_league(session, "999", format="half_ppr")
+    session.add(
+        PlatformPlayer(
+            platform="sleeper", platform_player_id="1", name="Josh Allen", position="QB", team="BUF"
+        )
+    )
+    session.commit()
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {"draft_id": "555"})
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 10, "rounds": 14}},
+    )
+    league_draft = draft_service.create_draft_from_league(session, created.id, my_slot=1)
+    draft_id = league_draft.id
+    session.add(DraftPick(draft_id=draft_id, pick_number=1, platform_player_id="1"))
+    session.add(DraftQueueEntry(draft_id=draft_id, platform_player_id="2", order=1))
+    session.commit()
+
+    league.delete_league(session, created.id)
+
+    assert session.get(Draft, draft_id) is None
+    assert session.query(DraftPick).filter_by(draft_id=draft_id).count() == 0
+    assert session.query(DraftQueueEntry).filter_by(draft_id=draft_id).count() == 0
+
+
 def test_delete_unknown_league_raises():
     session = make_session()
 

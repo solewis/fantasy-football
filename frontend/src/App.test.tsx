@@ -36,20 +36,31 @@ describe('App', () => {
     ).toBeInTheDocument()
   })
 
-  it('defaults to the Players tab', () => {
+  it('defaults to the Leagues tab', async () => {
     render(<App />)
 
-    expect(screen.getByPlaceholderText('Find player')).toBeInTheDocument()
+    expect(await screen.findByText(/No leagues yet/)).toBeInTheDocument()
   })
 
   it('switches to the Rankings tab when clicked', async () => {
     render(<App />)
+    await screen.findByText(/No leagues yet/)
 
     fireEvent.click(screen.getByRole('tab', { name: 'Rankings' }))
 
     expect(
       await screen.findByRole('button', { name: 'Load from ADP' }),
     ).toBeInTheDocument()
-    expect(screen.queryByPlaceholderText('Find player')).not.toBeInTheDocument()
+  })
+
+  it('the Players tab is still reachable', async () => {
+    render(<App />)
+    await screen.findByText(/No leagues yet/)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Players' }))
+
+    expect(
+      await screen.findByPlaceholderText('Find player'),
+    ).toBeInTheDocument()
   })
 })

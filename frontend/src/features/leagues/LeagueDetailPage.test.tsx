@@ -176,6 +176,25 @@ describe('LeagueDetailPage', () => {
     })
   })
 
+  it('shows a platform-specific sync label for a non-Sleeper league', () => {
+    const espnLeague: LeagueSummary = { ...baseLeague, platform: 'espn' }
+    mockBackend({ league: espnLeague })
+    render(
+      <LeagueDetailPage
+        league={espnLeague}
+        draft={null}
+        onBack={vi.fn()}
+        onLeagueUpdated={vi.fn()}
+        onLeagueDeleted={vi.fn()}
+        onDraftChanged={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'Sync from ESPN' }),
+    ).toBeInTheDocument()
+  })
+
   it('deleting a league requires a confirm click', async () => {
     mockBackend()
     const onLeagueDeleted = vi.fn()

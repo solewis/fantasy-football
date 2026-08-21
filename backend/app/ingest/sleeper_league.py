@@ -116,6 +116,16 @@ def parse_team_names(raw_rosters: list[dict], raw_users: list[dict]) -> dict[str
     return team_names
 
 
+def normalize_platform_league_id(platform_league_id: str) -> str:
+    """Turn whatever the add-league form collected into the canonical id this
+    module's fetchers expect. Sleeper's bare numeric league id already IS
+    that canonical form (a new one is issued each season, so it uniquely
+    identifies one league-season already) -- other platforms (ESPN's stable
+    across-season id) need to combine it with something else here.
+    """
+    return platform_league_id
+
+
 def fetch_and_parse_league(platform_league_id: str) -> tuple[dict, dict[str, str]]:
     """The uniform per-platform entry point app/league.py dispatches through --
     fetch everything needed to create/sync a local League and return

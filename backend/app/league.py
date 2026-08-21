@@ -17,7 +17,8 @@ def lookup_league(platform: str, platform_league_id: str) -> dict:
     """
     try:
         module = platforms.league_ingest(platform)
-        raw = module.fetch_raw_league(platform_league_id)
+        normalized_id = module.normalize_platform_league_id(platform_league_id)
+        raw = module.fetch_raw_league(normalized_id)
         return module.parse_league_meta(raw)
     except PlatformFetchError as exc:
         raise LeagueError(str(exc)) from exc
@@ -26,6 +27,10 @@ def lookup_league(platform: str, platform_league_id: str) -> dict:
 def _fetch_league_and_team_names(
     platform: str, platform_league_id: str
 ) -> tuple[dict, dict[str, str]]:
+    """platform_league_id here must already be normalized (the canonical form
+    stored on League and reused as-is by sync_league) -- normalization only
+    happens once, at create_league()/lookup_league() time.
+    """
     try:
         module = platforms.league_ingest(platform)
         return module.fetch_and_parse_league(platform_league_id)
@@ -40,11 +45,17 @@ def create_league(
     format: str,
     rank_set_id: int | None = None,
 ) -> League:
-    meta, team_names = _fetch_league_and_team_names(platform, platform_league_id)
+    try:
+        normalized_id = platforms.league_ingest(platform).normalize_platform_league_id(
+            platform_league_id
+        )
+    except PlatformFetchError as exc:
+        raise LeagueError(str(exc)) from exc
+    meta, team_names = _fetch_league_and_team_names(platform, normalized_id)
 
     league = League(
         platform=platform,
-        platform_league_id=platform_league_id,
+        platform_league_id=normalized_id,
         name=meta["name"],
         season=meta["season"],
         format=format,

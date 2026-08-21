@@ -16,10 +16,12 @@ NotImplementedError holes within one platform rather than a clean "this
 platform doesn't support that" error at one place.
 """
 
-from app.ingest import sleeper_draft, sleeper_league
+from app.ingest import espn_league, sleeper_draft, sleeper_league
+from app.ingest.errors import PlatformFetchError
 
 LEAGUE_INGEST = {
     "sleeper": sleeper_league,
+    "espn": espn_league,
 }
 
 DRAFT_INGEST = {
@@ -35,8 +37,13 @@ DISPLAY_NAMES = {
 }
 
 
-class UnsupportedPlatformError(ValueError):
-    """A platform string that has no registered ingest module."""
+class UnsupportedPlatformError(PlatformFetchError):
+    """A platform string that has no registered ingest module. Subclasses
+    PlatformFetchError so service-layer code that catches fetch failures
+    generically also catches "unknown platform" without a separate except
+    clause -- a client-supplied bad platform string is the same category of
+    "this request can't be satisfied" as a real network failure.
+    """
 
 
 def league_ingest(platform: str):

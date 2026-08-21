@@ -61,7 +61,7 @@ function mockBackend({
     if (pathname === '/leagues' && method === 'POST') {
       const created: LeagueSummary = {
         id: 1,
-        platform: 'sleeper',
+        platform: (body?.platform as string) ?? 'sleeper',
         platform_league_id: body?.platform_league_id as string,
         name: lookupResult.name,
         season: lookupResult.season,
@@ -183,8 +183,60 @@ describe('LeaguesPage', () => {
     const [, init] = postCall as [string, RequestInit]
     const body = JSON.parse(init.body as string) as Record<string, unknown>
     expect(body).toMatchObject({
+      platform: 'sleeper',
       platform_league_id: '999',
       format: 'half_ppr',
+    })
+  })
+
+  it('switching to the ESPN tab changes the id field label and posts platform: espn', async () => {
+    const fetchMock = mockBackend()
+    render(
+      <LeaguesPage
+        leagues={[]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map()}
+        {...noop}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add League' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'ESPN' }))
+
+    expect(screen.getByText('ESPN league ID')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText(/e.g. 1963950844/), {
+      target: { value: '1963950844' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Look Up' }))
+    await screen.findByText('Sunday Funday')
+    fireEvent.click(screen.getByRole('button', { name: 'Add League' }))
+    await vi.waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            (url as string).includes('/leagues') &&
+            (init as RequestInit)?.method === 'POST',
+        ),
+      ).toBe(true)
+    })
+
+    const lookupCall = fetchMock.mock.calls.find(([url]) =>
+      (url as string).includes('/leagues/lookup'),
+    )
+    expect(lookupCall?.[0]).toContain('platform=espn')
+
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        (url as string).includes('/leagues') &&
+        (init as RequestInit)?.method === 'POST',
+    )
+    const [, init] = postCall as [string, RequestInit]
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body).toMatchObject({
+      platform: 'espn',
+      platform_league_id: '1963950844',
     })
   })
 

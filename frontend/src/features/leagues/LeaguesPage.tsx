@@ -2,14 +2,31 @@ import { useState } from 'react'
 
 import {
   createLeague,
-  lookupSleeperLeague,
+  lookupLeague,
   type LeagueLookup,
   type LeagueSummary,
 } from '../../api/leagues'
 import type { DraftSummary } from '../../lib/draftSummary'
 import { FORMATS, SEASON } from '../../lib/formats'
+import { platformDisplayName } from '../../lib/platforms'
 import { RankSetPicker } from './RankSetPicker'
 import './leagues.css'
+
+type Platform = 'sleeper' | 'espn'
+
+const PLATFORM_LABELS: Record<
+  Platform,
+  { idLabel: string; idPlaceholder: string }
+> = {
+  sleeper: {
+    idLabel: 'Sleeper league ID',
+    idPlaceholder: 'e.g. 1390886581291749376',
+  },
+  espn: {
+    idLabel: 'ESPN league ID',
+    idPlaceholder: 'e.g. 1963950844',
+  },
+}
 
 interface LeaguesPageProps {
   leagues: LeagueSummary[]
@@ -37,6 +54,7 @@ export function LeaguesPage({
   onStartAdHoc,
 }: LeaguesPageProps) {
   const [adding, setAdding] = useState(false)
+  const [platform, setPlatform] = useState<Platform>('sleeper')
   const [leagueIdInput, setLeagueIdInput] = useState('')
   const [lookingUp, setLookingUp] = useState(false)
   const [lookupError, setLookupError] = useState<string | null>(null)
@@ -48,6 +66,7 @@ export function LeaguesPage({
 
   function startAdd() {
     setAdding(true)
+    setPlatform('sleeper')
     setLeagueIdInput('')
     setLookupResult(null)
     setLookupError(null)
@@ -65,7 +84,7 @@ export function LeaguesPage({
     setLookingUp(true)
     setLookupError(null)
     try {
-      const result = await lookupSleeperLeague(leagueIdInput.trim())
+      const result = await lookupLeague(platform, leagueIdInput.trim())
       setLookupResult(result)
       setConfirmFormat(result.suggested_format ?? 'half_ppr')
       setConfirmRankSetId(null)
@@ -83,6 +102,7 @@ export function LeaguesPage({
     setCreateError(null)
     try {
       const created = await createLeague({
+        platform,
         platform_league_id: leagueIdInput.trim(),
         format: confirmFormat,
         rank_set_id: confirmRankSetId,
@@ -114,12 +134,30 @@ export function LeaguesPage({
 
       {adding && (
         <div className="league-add-form">
+          <div
+            className="league-add-platform-tabs"
+            role="tablist"
+            aria-label="League platform"
+          >
+            {(Object.keys(PLATFORM_LABELS) as Platform[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                role="tab"
+                aria-selected={platform === p}
+                className={`league-add-platform-tab${platform === p ? ' active' : ''}`}
+                onClick={() => setPlatform(p)}
+              >
+                {platformDisplayName(p)}
+              </button>
+            ))}
+          </div>
           <label>
-            Sleeper league ID
+            {PLATFORM_LABELS[platform].idLabel}
             <input
               value={leagueIdInput}
               onChange={(e) => setLeagueIdInput(e.target.value)}
-              placeholder="e.g. 1390886581291749376"
+              placeholder={PLATFORM_LABELS[platform].idPlaceholder}
             />
           </label>
           <button

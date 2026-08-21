@@ -12,6 +12,7 @@ import {
   type DraftSummary,
 } from '../../lib/draftSummary'
 import { FORMATS } from '../../lib/formats'
+import { platformDisplayName } from '../../lib/platforms'
 import { DraftRoom } from '../draft/DraftRoom'
 import { RankSetPicker } from './RankSetPicker'
 import './leagues.css'
@@ -162,7 +163,9 @@ export function LeagueDetailPage({
 
         <div className="league-card-actions">
           <button type="button" onClick={handleSync} disabled={syncing}>
-            {syncing ? 'Syncing…' : 'Sync from Sleeper'}
+            {syncing
+              ? 'Syncing…'
+              : `Sync from ${platformDisplayName(league.platform)}`}
           </button>
           {confirmingDelete ? (
             <>

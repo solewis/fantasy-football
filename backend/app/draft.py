@@ -4,9 +4,25 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.draft_logic import pick_to_round_and_slot, total_picks
-from app.models import Draft, DraftPick, DraftQueueEntry, PlatformPlayer
+from app.ingest import sleeper_draft, sleeper_league
+from app.models import Draft, DraftPick, DraftQueueEntry, League, PlatformPlayer
 
 PLATFORM = "sleeper"
+
+
+def _team_names_by_slot(
+    slot_to_roster_id: dict[str, int], league_team_names: dict[str, str]
+) -> dict[str, str]:
+    """Cross-reference a draft's own slot_to_roster_id (board-column -> roster)
+    against a League's team_names (roster -> name) -- draft-slot assignment
+    isn't known at the League level, only once a specific Sleeper draft has
+    randomized its order.
+    """
+    return {
+        slot: league_team_names[str(roster_id)]
+        for slot, roster_id in slot_to_roster_id.items()
+        if str(roster_id) in league_team_names
+    }
 
 
 class DraftError(ValueError):
@@ -34,6 +50,144 @@ def create_draft(
     session.commit()
     session.refresh(draft)
     return draft
+
+
+def create_sleeper_draft(
+    session: Session,
+    platform_draft_id: str,
+    format: str,
+    my_slot: int,
+) -> Draft:
+    try:
+        raw = sleeper_draft.fetch_raw_draft(platform_draft_id)
+        meta = sleeper_draft.parse_draft_meta(raw)
+    except sleeper_draft.SleeperFetchError as exc:
+        raise DraftError(str(exc)) from exc
+
+    draft = Draft(
+        platform=PLATFORM,
+        platform_draft_id=platform_draft_id,
+        season=meta["season"],
+        format=format,
+        num_teams=meta["num_teams"],
+        num_rounds=meta["num_rounds"],
+        my_slot=my_slot,
+        created_at=datetime.now(UTC),
+    )
+    session.add(draft)
+    session.commit()
+    session.refresh(draft)
+    return draft
+
+
+def create_draft_from_league(session: Session, league_id: int, my_slot: int) -> Draft:
+    """Create a draft from a saved League: looks up the league's current Sleeper
+    draft (its own `draft_id` field -- the draft the league is presently set up
+    for, not a full history of past-season drafts) rather than pasting a raw
+    draft ID, and inherits the league's format/roster shape instead of asking
+    for it again.
+    """
+    league = session.get(League, league_id)
+    if league is None:
+        raise DraftError("League not found")
+
+    try:
+        raw_league = sleeper_league.fetch_raw_league(league.platform_league_id)
+    except sleeper_league.SleeperFetchError as exc:
+        raise DraftError(str(exc)) from exc
+
+    platform_draft_id = raw_league.get("draft_id")
+    if not platform_draft_id:
+        raise DraftError("This league doesn't have an active draft yet")
+
+    try:
+        raw_draft = sleeper_draft.fetch_raw_draft(platform_draft_id)
+        meta = sleeper_draft.parse_draft_meta(raw_draft)
+    except sleeper_draft.SleeperFetchError as exc:
+        raise DraftError(str(exc)) from exc
+
+    draft = Draft(
+        platform=PLATFORM,
+        platform_draft_id=platform_draft_id,
+        league_id=league.id,
+        season=meta["season"],
+        format=league.format,
+        num_teams=meta["num_teams"],
+        num_rounds=meta["num_rounds"],
+        my_slot=my_slot,
+        team_names=_team_names_by_slot(meta["slot_to_roster_id"], league.team_names) or None,
+        created_at=datetime.now(UTC),
+    )
+    session.add(draft)
+    session.commit()
+    session.refresh(draft)
+    return draft
+
+
+def sync_sleeper_draft(session: Session, draft_id: int) -> dict:
+    draft = get_draft(session, draft_id)
+    if draft is None:
+        raise DraftError("Draft not found")
+    if draft.platform != PLATFORM or not draft.platform_draft_id:
+        raise DraftError("Draft is not linked to a Sleeper draft")
+
+    try:
+        raw_picks = sleeper_draft.fetch_raw_picks(draft.platform_draft_id)
+    except sleeper_draft.SleeperFetchError as exc:
+        raise DraftError(str(exc)) from exc
+
+    # Sleeper only assigns slot_to_roster_id once the draft's order is set --
+    # that can happen after the draft was first created here, so re-check it
+    # on every sync rather than only at creation time.
+    if draft.league_id is not None:
+        league = session.get(League, draft.league_id)
+        if league is not None:
+            try:
+                raw_draft = sleeper_draft.fetch_raw_draft(draft.platform_draft_id)
+                meta = sleeper_draft.parse_draft_meta(raw_draft)
+            except sleeper_draft.SleeperFetchError as exc:
+                raise DraftError(str(exc)) from exc
+            draft.team_names = (
+                _team_names_by_slot(meta["slot_to_roster_id"], league.team_names) or None
+            )
+
+    parsed = sleeper_draft.parse_picks(raw_picks)
+    existing_numbers = {
+        row.pick_number
+        for row in session.query(DraftPick.pick_number).filter_by(draft_id=draft_id).all()
+    }
+
+    new_player_ids = []
+    for entry in parsed:
+        if entry["pick_number"] in existing_numbers:
+            continue
+        session.add(
+            DraftPick(
+                draft_id=draft_id,
+                pick_number=entry["pick_number"],
+                platform_player_id=entry["platform_player_id"],
+            )
+        )
+        new_player_ids.append(entry["platform_player_id"])
+
+    if new_player_ids:
+        session.query(DraftQueueEntry).filter(
+            DraftQueueEntry.draft_id == draft_id,
+            DraftQueueEntry.platform_player_id.in_(new_player_ids),
+        ).delete(synchronize_session=False)
+
+    session.commit()
+    return get_status(session, draft_id)
+
+
+def switch_to_manual(session: Session, draft_id: int) -> dict:
+    draft = get_draft(session, draft_id)
+    if draft is None:
+        raise DraftError("Draft not found")
+
+    draft.platform = "manual"
+    session.commit()
+    return get_status(session, draft_id)
 
 
 def get_draft(session: Session, draft_id: int) -> Draft | None:
@@ -79,6 +233,8 @@ def make_pick(session: Session, draft_id: int, platform_player_id: str) -> dict:
     draft = get_draft(session, draft_id)
     if draft is None:
         raise DraftError("Draft not found")
+    if draft.platform == PLATFORM:
+        raise DraftError("This draft is synced live from Sleeper; picks can't be entered manually")
 
     existing_count = session.query(DraftPick).filter_by(draft_id=draft_id).count()
     if existing_count >= total_picks(draft.num_teams, draft.num_rounds):
@@ -107,6 +263,10 @@ def make_pick(session: Session, draft_id: int, platform_player_id: str) -> dict:
 
 
 def undo_last_pick(session: Session, draft_id: int) -> dict | None:
+    draft = get_draft(session, draft_id)
+    if draft is not None and draft.platform == PLATFORM:
+        raise DraftError("This draft is synced live from Sleeper; picks can't be undone manually")
+
     last = (
         session.query(DraftPick)
         .filter_by(draft_id=draft_id)
@@ -136,14 +296,25 @@ def get_status(session: Session, draft_id: int) -> dict | None:
     if not is_complete:
         current_round, current_slot = pick_to_round_and_slot(next_pick_number, draft.num_teams)
 
+    # rank_set_id/roster_positions are read live from the League, not stored on
+    # Draft itself -- if you change a league's rank set or roster shape later,
+    # drafts created from it should reflect that automatically, not go stale.
+    league = session.get(League, draft.league_id) if draft.league_id else None
+
     return {
         "draft": {
             "id": draft.id,
+            "platform": draft.platform,
+            "platform_draft_id": draft.platform_draft_id,
+            "league_id": draft.league_id,
             "season": draft.season,
             "format": draft.format,
             "num_teams": draft.num_teams,
             "num_rounds": draft.num_rounds,
             "my_slot": draft.my_slot,
+            "rank_set_id": league.rank_set_id if league else None,
+            "roster_positions": league.roster_positions if league else None,
+            "team_names": draft.team_names or {},
         },
         "picks": picks,
         "next_pick_number": None if is_complete else next_pick_number,

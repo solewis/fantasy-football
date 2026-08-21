@@ -8,6 +8,8 @@ import './draft.css'
 interface DraftSidePanelProps {
   queue: QueueRow[]
   myPicks: PickRow[]
+  canDraft: boolean
+  rosterPositions?: string[]
   onReorderQueue: (next: QueueRow[]) => void
   onRemoveFromQueue: (playerId: string) => void
   onDraftFromQueue: (playerId: string) => void
@@ -18,6 +20,8 @@ type Tab = 'queue' | 'roster'
 export function DraftSidePanel({
   queue,
   myPicks,
+  canDraft,
+  rosterPositions,
   onReorderQueue,
   onRemoveFromQueue,
   onDraftFromQueue,
@@ -54,12 +58,13 @@ export function DraftSidePanel({
         {tab === 'queue' ? (
           <DraftQueuePanel
             queue={queue}
+            canDraft={canDraft}
             onReorder={onReorderQueue}
             onRemove={onRemoveFromQueue}
             onDraft={onDraftFromQueue}
           />
         ) : (
-          <DraftRosterPanel picks={myPicks} />
+          <DraftRosterPanel picks={myPicks} rosterPositions={rosterPositions} />
         )}
       </div>
     </div>

@@ -77,4 +77,36 @@ describe('DraftRosterPanel', () => {
     expect(screen.getByText('RB Four')).toBeInTheDocument()
     expect(screen.queryByText('No bench players yet.')).not.toBeInTheDocument()
   })
+
+  it('uses a league’s real roster shape when rosterPositions is given', () => {
+    const { container } = render(
+      <DraftRosterPanel
+        picks={[]}
+        rosterPositions={['QB', 'QB', 'RB', 'WR', 'SUPER_FLEX', 'BN', 'BN']}
+      />,
+    )
+
+    // two QB slots (a superflex-style league), one RB, one WR, no default
+    // TE/K/DEF/second-RB/second-WR slots, and no bench rows rendered.
+    expect(
+      container.querySelectorAll('.roster-slot-badge[data-position="QB"]'),
+    ).toHaveLength(2)
+    expect(screen.getAllByText('Empty')).toHaveLength(5)
+    expect(container.querySelectorAll('.draft-roster-slot')).toHaveLength(5)
+
+    const superFlexSlot = container.querySelector('.roster-slot-badge-flex')
+    expect(superFlexSlot).not.toBeNull()
+    expect(
+      within(superFlexSlot as HTMLElement).getByText('Q'),
+    ).toBeInTheDocument()
+    expect(
+      within(superFlexSlot as HTMLElement).getByText('R'),
+    ).toBeInTheDocument()
+    expect(
+      within(superFlexSlot as HTMLElement).getByText('W'),
+    ).toBeInTheDocument()
+    expect(
+      within(superFlexSlot as HTMLElement).getByText('T'),
+    ).toBeInTheDocument()
+  })
 })

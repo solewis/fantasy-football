@@ -1,10 +1,16 @@
 export interface DraftSettings {
   id: number
+  platform: string
+  platform_draft_id: string | null
+  league_id: number | null
   season: string
   format: string
   num_teams: number
   num_rounds: number
   my_slot: number
+  rank_set_id: number | null
+  roster_positions: string[] | null
+  team_names: Record<string, string>
 }
 
 export interface PickRow {
@@ -42,6 +48,17 @@ export interface CreateDraftParams {
   my_slot: number
 }
 
+export interface CreateSleeperDraftParams {
+  platform_draft_id: string
+  format: string
+  my_slot: number
+}
+
+export interface CreateDraftFromLeagueParams {
+  league_id: number
+  my_slot: number
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000'
 
 async function parseOrThrow<T>(response: Response, label: string): Promise<T> {
@@ -71,9 +88,48 @@ export async function createDraft(
   return parseOrThrow(response, 'Creating draft')
 }
 
+export async function createSleeperDraft(
+  params: CreateSleeperDraftParams,
+): Promise<DraftStatus> {
+  const response = await fetch(`${API_BASE}/drafts/sleeper`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return parseOrThrow(response, 'Creating Sleeper draft')
+}
+
+export async function createDraftFromLeague(
+  params: CreateDraftFromLeagueParams,
+): Promise<DraftStatus> {
+  const response = await fetch(`${API_BASE}/drafts/league`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return parseOrThrow(response, 'Creating draft from league')
+}
+
 export async function fetchDraftStatus(draftId: number): Promise<DraftStatus> {
   const response = await fetch(`${API_BASE}/drafts/${draftId}`)
   return parseOrThrow(response, 'Fetching draft')
+}
+
+export async function syncSleeperDraft(draftId: number): Promise<DraftStatus> {
+  const response = await fetch(`${API_BASE}/drafts/${draftId}/sync`, {
+    method: 'POST',
+  })
+  return parseOrThrow(response, 'Syncing draft')
+}
+
+export async function switchToManual(draftId: number): Promise<DraftStatus> {
+  const response = await fetch(
+    `${API_BASE}/drafts/${draftId}/switch-to-manual`,
+    {
+      method: 'POST',
+    },
+  )
+  return parseOrThrow(response, 'Switching to manual')
 }
 
 export async function makePick(

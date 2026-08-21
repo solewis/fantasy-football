@@ -1,6 +1,15 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -86,31 +95,83 @@ class SyncStatus(Base):
     last_synced_at: Mapped[datetime] = mapped_column(DateTime)
 
 
-class MyRank(Base):
-    """Your personal rank order for a player, scoped like AdpEntry (platform/season/format)
-    rather than to a League -- leagues aren't modeled yet, and a league's actual rank set
-    is just whichever format matches its scoring settings. No tiers yet (v1 scope: an
-    in-app drag-and-drop builder seeded from ADP); a Sheet-based import is a separate,
-    still-deferred path onto the same table.
+class RankSet(Base):
+    """A named, orderable rank list scoped to one platform/season/scoring format.
+
+    Multiple sets can exist per format (e.g. "Main" and "Zero-RB experiment" for the
+    same half_ppr season) -- a future League points at exactly one of these via a
+    plain rank_set_id reference, never the other way around: a RankSet has no idea
+    which (if any) leagues use it, and AdpEntry stays completely separate from this
+    table (ADP is generic per platform/season/format, shared by every rank set and
+    league that happens to use that format).
     """
 
-    __tablename__ = "my_ranks"
+    __tablename__ = "rank_sets"
     __table_args__ = (
-        UniqueConstraint("platform", "season", "format", "platform_player_id", name="uq_my_rank"),
+        UniqueConstraint("platform", "season", "format", "name", name="uq_rank_set_name"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    platform: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    platform: Mapped[str] = mapped_column(String, index=True, default="sleeper")
     season: Mapped[str] = mapped_column(String, index=True)
     format: Mapped[str] = mapped_column(String, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class RankEntry(Base):
+    """One player's position within a RankSet. platform/season/format deliberately
+    live only on the parent RankSet, not denormalized here (unlike the old flat
+    MyRank table this replaces) -- there's now a parent row to hang them on.
+    """
+
+    __tablename__ = "rank_entries"
+    __table_args__ = (
+        UniqueConstraint("rank_set_id", "platform_player_id", name="uq_rank_entry_player"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rank_set_id: Mapped[int] = mapped_column(ForeignKey("rank_sets.id"), index=True)
     platform_player_id: Mapped[str] = mapped_column(String, index=True)
     rank: Mapped[int] = mapped_column(Integer)
 
 
+class League(Base):
+    """One of your real fantasy leagues, set up once so its settings don't need
+    retyping every draft. `platform`/`platform_league_id` mirror Draft's pattern
+    (generic field, "sleeper" the only usable value for now). `rank_set_id` is a
+    plain, nullable reference to a RankSet -- many leagues can share one rank set
+    (e.g. two leagues that are both "half PPR"), and a league is fully usable
+    before you've picked one.
+    """
+
+    __tablename__ = "leagues"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String, default="sleeper")
+    platform_league_id: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    season: Mapped[str] = mapped_column(String, index=True)
+    format: Mapped[str] = mapped_column(String, index=True)
+    num_teams: Mapped[int] = mapped_column(Integer)
+    # Sleeper's own roster_positions array, verbatim (includes "BN" bench
+    # entries) -- order-preserving, opaque, never filtered/joined on, so JSON
+    # is the right fit (unlike RankEntry, which is a real relational table).
+    roster_positions: Mapped[list] = mapped_column(JSON)
+    # {roster_id (as a string): team name}, from joining the league's rosters
+    # and users endpoints -- draft-slot assignment isn't known at the league
+    # level (only once a specific draft exists), so this maps roster ownership,
+    # not board position.
+    team_names: Mapped[dict] = mapped_column(JSON)
+    rank_set_id: Mapped[int | None] = mapped_column(ForeignKey("rank_sets.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class Draft(Base):
-    """A local, manually-tracked draft session -- not yet linked to a real platform draft
-    (that's Phase 6, live Sleeper sync). `platform` is included now so a future sync can
-    slot in `platform_draft_id` without reshaping this table.
+    """A local draft session. `platform` is "manual" (typed in) or "sleeper" (synced
+    live from Sleeper's own draft-picks endpoint). `league_id` is a plain, nullable
+    reference to a League -- set only when the draft was created *from* a saved
+    League (League setup's Phase C); a raw Sleeper-draft-ID or manual draft has none.
     """
 
     __tablename__ = "drafts"
@@ -118,11 +179,19 @@ class Draft(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     platform: Mapped[str] = mapped_column(String, default="manual")
     platform_draft_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    league_id: Mapped[int | None] = mapped_column(ForeignKey("leagues.id"), nullable=True)
     season: Mapped[str] = mapped_column(String, index=True)
     format: Mapped[str] = mapped_column(String, index=True)
     num_teams: Mapped[int] = mapped_column(Integer)
     num_rounds: Mapped[int] = mapped_column(Integer)
     my_slot: Mapped[int] = mapped_column(Integer)
+    # {draft_slot (as a string): team name}, resolved from Sleeper's own
+    # slot_to_roster_id (per-draft, since snake-order slot assignment isn't known
+    # at the League level) joined against League.team_names (roster ownership).
+    # Null until that mapping is available (Sleeper only assigns it once the
+    # draft's order is set, which can be after league creation but before the
+    # draft starts) -- refreshed on each sync, not just at creation.
+    team_names: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
@@ -145,8 +214,9 @@ class DraftPick(Base):
 
 
 class DraftQueueEntry(Base):
-    """Your personal draft-day shortlist, scoped to one draft (not global like MyRank) --
-    a live queue is inherently tied to a specific board, and resets fresh per draft.
+    """Your personal draft-day shortlist, scoped to one draft (not global like a
+    RankSet) -- a live queue is inherently tied to a specific board, and resets
+    fresh per draft.
     """
 
     __tablename__ = "draft_queue_entries"

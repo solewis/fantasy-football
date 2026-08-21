@@ -8,7 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PlayerRow } from '../../api/players'
-import type { RankRow } from '../../api/ranks'
+import type { RankRow, RankSetSummary } from '../../api/ranks'
 import { RankingsPage } from './RankingsPage'
 
 const adpPlayers: PlayerRow[] = [
@@ -53,6 +53,10 @@ function jsonResponse(body: unknown) {
   return { ok: true, json: () => Promise.resolve(body) }
 }
 
+function noContentResponse() {
+  return { ok: true, status: 204, json: () => Promise.resolve(null) }
+}
+
 /** jsdom's DragEvent doesn't implement `clientY` at all (comes back
  * `undefined`, not 0), so `fireEvent.dragOver(el, { clientY })` silently has
  * no effect. Force it through via a raw Event + defineProperty instead. */
@@ -65,25 +69,110 @@ function dragOverAt(el: Element, clientY: number) {
   fireEvent(el, event)
 }
 
-/** Routes by URL/method: GET /ranks, GET /players, PUT /ranks. */
-function mockFetch({
-  ranks = [],
+/** A small in-memory stand-in for the rank-sets backend: routes by pathname
+ * (never raw substring match -- the real URLs carry query strings). */
+function mockBackend({
+  initialSets = [],
+  ranksBySetId = {},
   players = adpPlayers,
-  putResponse = { count: players.length },
 }: {
-  ranks?: RankRow[]
+  initialSets?: RankSetSummary[]
+  ranksBySetId?: Record<number, RankRow[]>
   players?: PlayerRow[]
-  putResponse?: { count: number }
 } = {}) {
+  let sets = [...initialSets]
+  let nextId = Math.max(0, ...sets.map((s) => s.id)) + 1
+  const ranksById: Record<number, RankRow[]> = { ...ranksBySetId }
+
+  function toRankRow(player: PlayerRow, index: number): RankRow {
+    return {
+      rank: index + 1,
+      platform_player_id: player.platform_player_id,
+      name: player.name,
+      position: player.position,
+      team: player.team,
+      adp: player.adp,
+    }
+  }
+
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-    if (url.includes('/ranks') && init?.method === 'PUT') {
-      return Promise.resolve(jsonResponse(putResponse))
+    const { pathname, searchParams } = new URL(url)
+    const method = init?.method ?? 'GET'
+    const body = init?.body
+      ? (JSON.parse(init.body as string) as Record<string, unknown>)
+      : undefined
+
+    const ranksMatch = pathname.match(/^\/rank-sets\/(\d+)\/ranks$/)
+    if (ranksMatch && method === 'GET') {
+      return Promise.resolve(
+        jsonResponse(ranksById[Number(ranksMatch[1])] ?? []),
+      )
     }
-    if (url.includes('/ranks')) {
-      return Promise.resolve(jsonResponse(ranks))
+    if (ranksMatch && method === 'PUT') {
+      const id = Number(ranksMatch[1])
+      const ids = (body?.platform_player_ids as string[]) ?? []
+      ranksById[id] = ids.map((pid, i) => {
+        const player = players.find((p) => p.platform_player_id === pid)
+        return player
+          ? toRankRow(player, i)
+          : {
+              rank: i + 1,
+              platform_player_id: pid,
+              name: pid,
+              position: null,
+              team: null,
+              adp: null,
+            }
+      })
+      const set = sets.find((s) => s.id === id)
+      if (set) set.player_count = ids.length
+      return Promise.resolve(jsonResponse({ count: ids.length }))
     }
-    return Promise.resolve(jsonResponse(players))
+
+    const idMatch = pathname.match(/^\/rank-sets\/(\d+)$/)
+    if (idMatch && method === 'PATCH') {
+      const id = Number(idMatch[1])
+      const set = sets.find((s) => s.id === id)
+      if (set) set.name = body?.name as string
+      return Promise.resolve(jsonResponse(set))
+    }
+    if (idMatch && method === 'DELETE') {
+      const id = Number(idMatch[1])
+      sets = sets.filter((s) => s.id !== id)
+      delete ranksById[id]
+      return Promise.resolve(noContentResponse())
+    }
+
+    if (pathname === '/rank-sets' && method === 'POST') {
+      const newSet: RankSetSummary = {
+        id: nextId++,
+        name: body?.name as string,
+        platform: (body?.platform as string) ?? 'sleeper',
+        season: body?.season as string,
+        format: body?.format as string,
+        player_count: 0,
+      }
+      sets.push(newSet)
+      if (body?.seed_from_adp) {
+        ranksById[newSet.id] = players.map((p, i) => toRankRow(p, i))
+        newSet.player_count = players.length
+      }
+      return Promise.resolve(jsonResponse(newSet))
+    }
+    if (pathname === '/rank-sets' && method === 'GET') {
+      const format = searchParams.get('format')
+      return Promise.resolve(
+        jsonResponse(sets.filter((s) => !format || s.format === format)),
+      )
+    }
+
+    if (pathname === '/players') {
+      return Promise.resolve(jsonResponse(players))
+    }
+
+    return Promise.resolve(jsonResponse([]))
   })
+
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
@@ -93,22 +182,37 @@ beforeEach(() => {
 })
 
 describe('RankingsPage', () => {
-  it('falls back to ADP order when no ranks are saved yet', async () => {
-    mockFetch({ ranks: [] })
+  it('falls back to ADP order when no rank sets exist yet', async () => {
+    mockBackend({ initialSets: [] })
 
     render(<RankingsPage />)
 
     expect(await screen.findByText("Ja'Marr Chase")).toBeInTheDocument()
     expect(screen.getByText('Bijan Robinson')).toBeInTheDocument()
     expect(screen.getByText(/Starting from ADP order/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/No rank sets for this format yet/),
+    ).toBeInTheDocument()
 
     const rows = screen.getAllByRole('row')
     // header + 2 players + end-drop-zone
     expect(within(rows[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
   })
 
-  it('uses saved ranks when they exist, without the ADP fallback note', async () => {
-    mockFetch({ ranks: savedRanks })
+  it('uses a rank set’s saved order when it has entries, without the ADP fallback note', async () => {
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+    })
 
     render(<RankingsPage />)
 
@@ -121,7 +225,19 @@ describe('RankingsPage', () => {
   })
 
   it('reorders live during drag, before any drop event fires', async () => {
-    mockFetch({ ranks: savedRanks })
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+    })
     render(<RankingsPage />)
     await screen.findByText('Bijan Robinson')
 
@@ -151,7 +267,19 @@ describe('RankingsPage', () => {
   })
 
   it('hovering the very next row’s top half does not move it (regression: moving one spot down)', async () => {
-    mockFetch({ ranks: savedRanks })
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+    })
     render(<RankingsPage />)
     await screen.findByText('Bijan Robinson')
 
@@ -175,7 +303,19 @@ describe('RankingsPage', () => {
   })
 
   it('dragging over the end zone moves the item to the end', async () => {
-    mockFetch({ ranks: savedRanks })
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+    })
     render(<RankingsPage />)
     await screen.findByText('Bijan Robinson')
 
@@ -192,7 +332,19 @@ describe('RankingsPage', () => {
   })
 
   it('move-down button moves a player exactly one spot', async () => {
-    mockFetch({ ranks: savedRanks })
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+    })
     render(<RankingsPage />)
     await screen.findByText('Bijan Robinson')
 
@@ -206,7 +358,19 @@ describe('RankingsPage', () => {
   })
 
   it('move-up button moves a player exactly one spot', async () => {
-    mockFetch({ ranks: savedRanks })
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+    })
     render(<RankingsPage />)
     await screen.findByText('Bijan Robinson')
 
@@ -220,7 +384,19 @@ describe('RankingsPage', () => {
   })
 
   it('disables move-up for the first row and move-down for the last row', async () => {
-    mockFetch({ ranks: savedRanks })
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+    })
     render(<RankingsPage />)
     await screen.findByText('Bijan Robinson')
 
@@ -239,7 +415,20 @@ describe('RankingsPage', () => {
   })
 
   it('Load from ADP replaces the working list', async () => {
-    mockFetch({ ranks: savedRanks, players: adpPlayers })
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+      players: adpPlayers,
+    })
     render(<RankingsPage />)
     await screen.findByText('Bijan Robinson')
 
@@ -252,10 +441,19 @@ describe('RankingsPage', () => {
     expect(within(rows[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
   })
 
-  it('Save Ranks sends the current order as platform_player_ids', async () => {
-    const fetchMock = mockFetch({
-      ranks: savedRanks,
-      putResponse: { count: 2 },
+  it('Save Ranks sends the current order to the selected rank set', async () => {
+    const fetchMock = mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
     })
     render(<RankingsPage />)
     await screen.findByText('Bijan Robinson')
@@ -268,10 +466,83 @@ describe('RankingsPage', () => {
     )
     expect(putCall).toBeDefined()
     const [url, init] = putCall as [string, RequestInit]
-    expect(url).toContain('/ranks')
+    expect(url).toContain('/rank-sets/1/ranks')
     const body = JSON.parse(init.body as string) as {
       platform_player_ids: string[]
     }
     expect(body.platform_player_ids).toEqual(['2', '3'])
+  })
+
+  it('creating a rank set seeds it from ADP and selects it', async () => {
+    mockBackend({ initialSets: [], players: adpPlayers })
+    render(<RankingsPage />)
+    await screen.findByText(/No rank sets for this format yet/)
+
+    fireEvent.click(screen.getByRole('button', { name: '+ New Rank Set' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(
+      await screen.findByRole('option', { name: /Half PPR Ranks \(2\)/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/No rank sets for this format yet/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('renaming the selected rank set updates its label', async () => {
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+    })
+    render(<RankingsPage />)
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    fireEvent.change(screen.getByLabelText('Rename rank set'), {
+      target: { value: 'Updated' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+
+    expect(
+      await screen.findByRole('option', { name: 'Updated (2)' }),
+    ).toBeInTheDocument()
+  })
+
+  it('deleting the selected rank set requires a confirm click', async () => {
+    mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+    })
+    render(<RankingsPage />)
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(
+      screen.queryByText(/No rank sets for this format yet/),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete?' }))
+
+    expect(
+      await screen.findByText(/No rank sets for this format yet/),
+    ).toBeInTheDocument()
   })
 })

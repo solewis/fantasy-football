@@ -1,10 +1,11 @@
 import { useState } from 'react'
 
 import { DraftPage } from './features/draft/DraftPage'
+import { LeaguesPage } from './features/leagues/LeaguesPage'
 import { PlayersPage } from './features/players/PlayersPage'
 import { RankingsPage } from './features/rankings/RankingsPage'
 
-const TABS = ['Players', 'Rankings', 'Draft'] as const
+const TABS = ['Players', 'Rankings', 'Leagues', 'Draft'] as const
 type Tab = (typeof TABS)[number]
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
       <main>
         {activeTab === 'Players' && <PlayersPage />}
         {activeTab === 'Rankings' && <RankingsPage />}
+        {activeTab === 'Leagues' && <LeaguesPage />}
         {activeTab === 'Draft' && <DraftPage />}
       </main>
     </div>

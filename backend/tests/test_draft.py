@@ -1,9 +1,13 @@
+from datetime import UTC, datetime
+
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app import draft
 from app.db import Base
-from app.models import DraftPick, DraftQueueEntry, PlatformPlayer
+from app.ingest import sleeper_draft, sleeper_league
+from app.models import Draft, DraftPick, DraftQueueEntry, League, PlatformPlayer
 
 
 def make_session() -> Session:
@@ -44,6 +48,31 @@ def make_small_draft(session: Session, num_teams: int = 2, num_rounds: int = 2, 
         num_rounds=num_rounds,
         my_slot=my_slot,
     )
+
+
+def make_league(
+    session: Session,
+    format: str = "half_ppr",
+    roster_positions: list | None = None,
+    team_names: dict | None = None,
+    rank_set_id: int | None = None,
+) -> League:
+    league = League(
+        platform="sleeper",
+        platform_league_id="777",
+        name="Test League",
+        season="2026",
+        format=format,
+        num_teams=2,
+        roster_positions=roster_positions or ["QB", "RB"],
+        team_names=team_names or {},
+        rank_set_id=rank_set_id,
+        created_at=datetime.now(UTC),
+    )
+    session.add(league)
+    session.commit()
+    session.refresh(league)
+    return league
 
 
 def test_create_draft_persists_settings():
@@ -223,3 +252,297 @@ def test_queues_are_scoped_per_draft():
 
     assert [r["platform_player_id"] for r in draft.list_queue(session, draft_a.id)] == ["1"]
     assert [r["platform_player_id"] for r in draft.list_queue(session, draft_b.id)] == ["2"]
+
+
+def test_create_sleeper_draft_uses_settings_from_sleeper(monkeypatch):
+    session = make_session()
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 8, "rounds": 12}},
+    )
+
+    created = draft.create_sleeper_draft(session, "999", format="ppr", my_slot=4)
+
+    assert created.platform == "sleeper"
+    assert created.platform_draft_id == "999"
+    assert created.season == "2026"
+    assert created.num_teams == 8
+    assert created.num_rounds == 12
+    assert created.my_slot == 4
+
+
+def test_create_sleeper_draft_raises_draft_error_on_fetch_failure(monkeypatch):
+    session = make_session()
+
+    def boom(draft_id):
+        raise sleeper_draft.SleeperFetchError("no such draft")
+
+    monkeypatch.setattr(sleeper_draft, "fetch_raw_draft", boom)
+
+    with pytest.raises(draft.DraftError):
+        draft.create_sleeper_draft(session, "bad-id", format="ppr", my_slot=1)
+
+
+def test_sync_sleeper_draft_inserts_new_picks(monkeypatch):
+    session = make_session()
+    seed_players(session)
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+    created = draft.create_sleeper_draft(session, "999", format="half_ppr", my_slot=1)
+
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_picks",
+        lambda draft_id: [
+            {"pick_no": 1, "player_id": "1"},
+            {"pick_no": 2, "player_id": "2"},
+        ],
+    )
+
+    status = draft.sync_sleeper_draft(session, created.id)
+
+    assert [p["platform_player_id"] for p in status["picks"]] == ["1", "2"]
+
+
+def test_sync_sleeper_draft_is_idempotent(monkeypatch):
+    session = make_session()
+    seed_players(session)
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+    created = draft.create_sleeper_draft(session, "999", format="half_ppr", my_slot=1)
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_picks",
+        lambda draft_id: [{"pick_no": 1, "player_id": "1"}],
+    )
+
+    draft.sync_sleeper_draft(session, created.id)
+    draft.sync_sleeper_draft(session, created.id)
+
+    assert session.query(DraftPick).filter_by(draft_id=created.id).count() == 1
+
+
+def test_sync_sleeper_draft_removes_synced_players_from_queue(monkeypatch):
+    session = make_session()
+    seed_players(session)
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+    created = draft.create_sleeper_draft(session, "999", format="half_ppr", my_slot=1)
+    draft.replace_queue(session, created.id, ["1", "2"])
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_picks",
+        lambda draft_id: [{"pick_no": 1, "player_id": "1"}],
+    )
+
+    draft.sync_sleeper_draft(session, created.id)
+
+    remaining = draft.list_queue(session, created.id)
+    assert [r["platform_player_id"] for r in remaining] == ["2"]
+
+
+def test_sync_sleeper_draft_rejects_manual_draft():
+    session = make_session()
+    created = make_small_draft(session)
+
+    with pytest.raises(draft.DraftError):
+        draft.sync_sleeper_draft(session, created.id)
+
+
+def test_make_pick_rejects_on_sleeper_synced_draft(monkeypatch):
+    session = make_session()
+    seed_players(session)
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+    created = draft.create_sleeper_draft(session, "999", format="half_ppr", my_slot=1)
+
+    with pytest.raises(draft.DraftError):
+        draft.make_pick(session, created.id, "1")
+
+
+def test_undo_last_pick_rejects_on_sleeper_synced_draft(monkeypatch):
+    session = make_session()
+    seed_players(session)
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+    created = draft.create_sleeper_draft(session, "999", format="half_ppr", my_slot=1)
+
+    with pytest.raises(draft.DraftError):
+        draft.undo_last_pick(session, created.id)
+
+
+def test_switch_to_manual_allows_manual_picks_again(monkeypatch):
+    session = make_session()
+    seed_players(session)
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+    created = draft.create_sleeper_draft(session, "999", format="half_ppr", my_slot=1)
+
+    status = draft.switch_to_manual(session, created.id)
+
+    assert status["draft"]["platform"] == "manual"
+    result = draft.make_pick(session, created.id, "1")
+    assert result == {"pick_number": 1}
+
+
+def test_create_draft_from_league_uses_leagues_current_draft_id(monkeypatch):
+    session = make_session()
+    league = make_league(session, team_names={"10": "My Team", "3": "Rival"})
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {"draft_id": "555"})
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {
+            "season": "2026",
+            "settings": {"teams": 2, "rounds": 2},
+            "slot_to_roster_id": {"1": 10, "2": 3},
+        },
+    )
+
+    created = draft.create_draft_from_league(session, league.id, my_slot=1)
+
+    assert created.platform == "sleeper"
+    assert created.platform_draft_id == "555"
+    assert created.league_id == league.id
+    assert created.format == "half_ppr"
+    assert created.num_teams == 2
+    assert created.num_rounds == 2
+    assert created.my_slot == 1
+    assert created.team_names == {"1": "My Team", "2": "Rival"}
+
+
+def test_create_draft_from_league_raises_when_league_not_found():
+    session = make_session()
+
+    with pytest.raises(draft.DraftError):
+        draft.create_draft_from_league(session, 999, my_slot=1)
+
+
+def test_create_draft_from_league_raises_when_no_active_draft(monkeypatch):
+    session = make_session()
+    league = make_league(session)
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {})
+
+    with pytest.raises(draft.DraftError):
+        draft.create_draft_from_league(session, league.id, my_slot=1)
+
+
+def test_create_draft_from_league_raises_on_league_fetch_failure(monkeypatch):
+    session = make_session()
+    league = make_league(session)
+
+    def boom(league_id):
+        raise sleeper_league.SleeperFetchError("no such league")
+
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", boom)
+
+    with pytest.raises(draft.DraftError):
+        draft.create_draft_from_league(session, league.id, my_slot=1)
+
+
+def test_create_draft_from_league_raises_on_draft_fetch_failure(monkeypatch):
+    session = make_session()
+    league = make_league(session)
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {"draft_id": "555"})
+
+    def boom(draft_id):
+        raise sleeper_draft.SleeperFetchError("no such draft")
+
+    monkeypatch.setattr(sleeper_draft, "fetch_raw_draft", boom)
+
+    with pytest.raises(draft.DraftError):
+        draft.create_draft_from_league(session, league.id, my_slot=1)
+
+
+def test_create_draft_from_league_leaves_team_names_empty_pre_draft(monkeypatch):
+    session = make_session()
+    league = make_league(session, team_names={"10": "My Team"})
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {"draft_id": "555"})
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        # no slot_to_roster_id -- draft order not yet randomized
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+
+    created = draft.create_draft_from_league(session, league.id, my_slot=1)
+
+    assert created.team_names is None
+
+
+def test_sync_sleeper_draft_refreshes_team_names_once_available(monkeypatch):
+    session = make_session()
+    seed_players(session)
+    league = make_league(session, team_names={"10": "My Team", "3": "Rival"})
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {"draft_id": "555"})
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+    created = draft.create_draft_from_league(session, league.id, my_slot=1)
+    assert created.team_names is None
+
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {
+            "season": "2026",
+            "settings": {"teams": 2, "rounds": 2},
+            "slot_to_roster_id": {"1": 10, "2": 3},
+        },
+    )
+    monkeypatch.setattr(sleeper_draft, "fetch_raw_picks", lambda draft_id: [])
+
+    draft.sync_sleeper_draft(session, created.id)
+
+    assert session.get(Draft, created.id).team_names == {"1": "My Team", "2": "Rival"}
+
+
+def test_get_status_includes_rank_set_and_roster_positions_from_league(monkeypatch):
+    session = make_session()
+    league = make_league(session, roster_positions=["QB", "RB", "BN"], rank_set_id=42)
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {"draft_id": "555"})
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+    created = draft.create_draft_from_league(session, league.id, my_slot=1)
+
+    status = draft.get_status(session, created.id)
+
+    assert status["draft"]["league_id"] == league.id
+    assert status["draft"]["rank_set_id"] == 42
+    assert status["draft"]["roster_positions"] == ["QB", "RB", "BN"]
+
+
+def test_get_status_has_null_rank_set_and_roster_positions_for_non_league_draft():
+    session = make_session()
+    created = make_small_draft(session)
+
+    status = draft.get_status(session, created.id)
+
+    assert status["draft"]["league_id"] is None
+    assert status["draft"]["rank_set_id"] is None
+    assert status["draft"]["roster_positions"] is None
+    assert status["draft"]["team_names"] == {}

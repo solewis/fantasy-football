@@ -9,16 +9,23 @@ import './draft.css'
 
 interface DraftPlayerPoolProps {
   format: string
+  /** The League's assigned rank set, if this draft was created from one.
+   * When set, reads that exact rank set instead of the format-based
+   * "whichever set was created first" resolver. */
+  rankSetId?: number | null
   draftedIds: Set<string>
   queuedIds: Set<string>
+  canDraft: boolean
   onDraft: (playerId: string) => void
   onQueue: (playerId: string) => void
 }
 
 export function DraftPlayerPool({
   format,
+  rankSetId,
   draftedIds,
   queuedIds,
+  canDraft,
   onDraft,
   onQueue,
 }: DraftPlayerPoolProps) {
@@ -26,35 +33,37 @@ export function DraftPlayerPool({
   const [search, setSearch] = useState('')
   const [allRows, setAllRows] = useState<RankRow[]>([])
   const [error, setError] = useState<string | null>(null)
-  // `format` is a prop here (owned by the parent's draft setup), not a local
-  // selector, so there's no local event handler to set a "loading" flag from
-  // synchronously. Instead, "loading" is derived below from whether the most
-  // recently *loaded* format (set only from the async callbacks) matches
-  // the current one.
-  const [loadedFormat, setLoadedFormat] = useState<string | null>(null)
+  // format/rankSetId are props here (owned by the parent's draft setup), not
+  // a local selector, so there's no local event handler to set a "loading"
+  // flag from synchronously. Instead, "loading" is derived below from
+  // whether the most recently *loaded* key (set only from the async
+  // callbacks) matches the current one.
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
+  const currentKey = `${format}:${rankSetId ?? 'none'}`
 
   useEffect(() => {
     let cancelled = false
+    const key = `${format}:${rankSetId ?? 'none'}`
 
-    fetchRankedOrAdpFallback(SEASON, format)
+    fetchRankedOrAdpFallback(SEASON, format, rankSetId)
       .then((result) => {
         if (cancelled) return
         setAllRows(result.rows)
         setError(null)
-        setLoadedFormat(format)
+        setLoadedKey(key)
       })
       .catch((err: unknown) => {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Failed to load players')
-        setLoadedFormat(format)
+        setLoadedKey(key)
       })
 
     return () => {
       cancelled = true
     }
-  }, [format])
+  }, [format, rankSetId])
 
-  const loading = loadedFormat !== format
+  const loading = loadedKey !== currentKey
 
   const searchTerm = search.trim().toLowerCase()
   const rows = allRows.filter((row) => {
@@ -124,12 +133,14 @@ export function DraftPlayerPool({
                   </td>
                   <td>{row.team ?? '—'}</td>
                   <td className="draft-pool-actions">
-                    <button
-                      type="button"
-                      onClick={() => onDraft(row.platform_player_id)}
-                    >
-                      Draft
-                    </button>
+                    {canDraft && (
+                      <button
+                        type="button"
+                        onClick={() => onDraft(row.platform_player_id)}
+                      >
+                        Draft
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => onQueue(row.platform_player_id)}

@@ -8,10 +8,14 @@ from app.db import get_db
 from app.draft import (
     DraftError,
     create_draft,
+    create_draft_from_league,
+    create_sleeper_draft,
     get_status,
     list_queue,
     make_pick,
     replace_queue,
+    switch_to_manual,
+    sync_sleeper_draft,
     undo_last_pick,
 )
 
@@ -28,13 +32,30 @@ class CreateDraftRequest(BaseModel):
     my_slot: int
 
 
+class CreateSleeperDraftRequest(BaseModel):
+    platform_draft_id: str
+    format: str
+    my_slot: int
+
+
+class CreateDraftFromLeagueRequest(BaseModel):
+    league_id: int
+    my_slot: int
+
+
 class DraftSummary(BaseModel):
     id: int
+    platform: str
+    platform_draft_id: str | None
+    league_id: int | None
     season: str
     format: str
     num_teams: int
     num_rounds: int
     my_slot: int
+    rank_set_id: int | None
+    roster_positions: list[str] | None
+    team_names: dict[str, str]
 
 
 class PickRow(BaseModel):
@@ -89,6 +110,44 @@ def post_draft(payload: CreateDraftRequest, db: DbSession) -> DraftStatus:
     return DraftStatus(**status)
 
 
+@router.post("/sleeper", response_model=DraftStatus)
+def post_sleeper_draft(payload: CreateSleeperDraftRequest, db: DbSession) -> DraftStatus:
+    try:
+        draft = create_sleeper_draft(db, payload.platform_draft_id, payload.format, payload.my_slot)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    status = get_status(db, draft.id)
+    return DraftStatus(**status)
+
+
+@router.post("/league", response_model=DraftStatus)
+def post_draft_from_league(payload: CreateDraftFromLeagueRequest, db: DbSession) -> DraftStatus:
+    try:
+        draft = create_draft_from_league(db, payload.league_id, payload.my_slot)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    status = get_status(db, draft.id)
+    return DraftStatus(**status)
+
+
+@router.post("/{draft_id}/sync", response_model=DraftStatus)
+def post_sync(draft_id: int, db: DbSession) -> DraftStatus:
+    try:
+        status = sync_sleeper_draft(db, draft_id)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return DraftStatus(**status)
+
+
+@router.post("/{draft_id}/switch-to-manual", response_model=DraftStatus)
+def post_switch_to_manual(draft_id: int, db: DbSession) -> DraftStatus:
+    try:
+        status = switch_to_manual(db, draft_id)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return DraftStatus(**status)
+
+
 @router.get("/{draft_id}", response_model=DraftStatus)
 def get_draft_status(draft_id: int, db: DbSession) -> DraftStatus:
     status = get_status(db, draft_id)
@@ -108,7 +167,10 @@ def post_pick(draft_id: int, payload: MakePickRequest, db: DbSession) -> MakePic
 
 @router.delete("/{draft_id}/picks", response_model=MakePickResponse | None)
 def delete_last_pick(draft_id: int, db: DbSession) -> MakePickResponse | None:
-    undone = undo_last_pick(db, draft_id)
+    try:
+        undone = undo_last_pick(db, draft_id)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if undone is None:
         return None
     return MakePickResponse(pick_number=undone["pick_number"])

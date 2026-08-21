@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { fetchPlayers } from '../../api/players'
-import { fetchRanks, saveRanks, type RankRow } from '../../api/ranks'
+import {
+  createRankSet,
+  deleteRankSet,
+  fetchRankSets,
+  fetchRanksForSet,
+  renameRankSet,
+  saveRanksForSet,
+  type RankRow,
+  type RankSetSummary,
+} from '../../api/ranks'
 import { FORMATS, SEASON } from '../../lib/formats'
 import { isBelowMidpoint, reorderList } from '../../lib/reorder'
 import { PositionTag } from '../players/PositionTag'
@@ -11,12 +20,30 @@ type Source = 'saved' | 'adp' | null
 
 export function RankingsPage() {
   const [format, setFormat] = useState('half_ppr')
+  const [rankSets, setRankSets] = useState<RankSetSummary[]>([])
+  const [selectedSetId, setSelectedSetId] = useState<number | null>(null)
   const [workingList, setWorkingList] = useState<RankRow[]>([])
   const [source, setSource] = useState<Source>(null)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [adpLoading, setAdpLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+
+  // "loading" is deliberately derived, not a useState set from inside an
+  // effect -- these two keys only get written from a .then()/.finally()
+  // callback (an async continuation, not the effect's synchronous body), so
+  // there's nothing to reset up front and no risk of a cascading render.
+  const [rankSetsLoadedFormat, setRankSetsLoadedFormat] = useState<
+    string | null
+  >(null)
+  const rankSetsLoaded = rankSetsLoadedFormat === format
+  const [ranksLoadedKey, setRanksLoadedKey] = useState<string | null>(null)
+  const currentRanksKey = `${selectedSetId ?? 'adp'}:${format}`
+  const loading = !rankSetsLoaded || ranksLoadedKey !== currentRanksKey
+
+  const [creatingName, setCreatingName] = useState<string | null>(null)
+  const [renamingName, setRenamingName] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   // State drives the "dragging" CSS highlight (fine to be a render behind);
   // the ref is what dragover/drop actually read, since those DOM events can
@@ -28,36 +55,44 @@ export function RankingsPage() {
   // within the same half of the same row -- dragover fires continuously.
   const lastHoverKeyRef = useRef<string | null>(null)
 
+  const selectedSet = rankSets.find((s) => s.id === selectedSetId) ?? null
+
   function selectFormat(next: string) {
-    setLoading(true)
     setSaveMessage(null)
+    setCreatingName(null)
+    setRenamingName(null)
+    setConfirmingDelete(false)
     setFormat(next)
   }
 
+  // Effect A: the list of rank sets for this format. Never touches
+  // workingList -- that's Effect B's job, keyed on selectedSetId, so the two
+  // can't race each other on every format switch. rankSetsLoaded gates Effect
+  // B so it never renders an ADP preview before we actually know whether a
+  // rank set exists for this format -- without that gate, a brand-new format
+  // switch briefly (and wrongly) shows ADP order while this fetch is still
+  // in flight, racing against the real answer.
   useEffect(() => {
     let cancelled = false
 
-    fetchRanks({ season: SEASON, format })
-      .then(async (savedRows) => {
+    fetchRankSets({ season: SEASON, format })
+      .then((sets) => {
         if (cancelled) return
-        if (savedRows.length > 0) {
-          setWorkingList(savedRows)
-          setSource('saved')
-          return
-        }
-        const adpRows = await fetchPlayers({ season: SEASON, format })
-        if (cancelled) return
-        setWorkingList(adpRows)
-        setSource('adp')
+        setRankSets(sets)
+        setSelectedSetId((current) => {
+          if (current !== null && sets.some((s) => s.id === current))
+            return current
+          return sets.length > 0 ? sets[0].id : null
+        })
       })
       .catch((err: unknown) => {
         if (!cancelled)
           setError(
-            err instanceof Error ? err.message : 'Failed to load rankings',
+            err instanceof Error ? err.message : 'Failed to load rank sets',
           )
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setRankSetsLoadedFormat(format)
       })
 
     return () => {
@@ -65,8 +100,57 @@ export function RankingsPage() {
     }
   }, [format])
 
+  // Effect B: the actual rank content for whichever set is selected (or an
+  // ADP preview if none is). Waits for Effect A to finish at least once.
+  useEffect(() => {
+    if (!rankSetsLoaded) return
+    let cancelled = false
+    const key = `${selectedSetId ?? 'adp'}:${format}`
+
+    async function load() {
+      if (selectedSetId === null) {
+        const rows = await fetchPlayers({ season: SEASON, format })
+        if (cancelled) return
+        setWorkingList(rows)
+        setSource('adp')
+        return
+      }
+
+      const rows = await fetchRanksForSet(selectedSetId)
+      if (cancelled) return
+      if (rows.length > 0) {
+        setWorkingList(rows)
+        setSource('saved')
+        return
+      }
+      const adpRows = await fetchPlayers({ season: SEASON, format })
+      if (cancelled) return
+      setWorkingList(adpRows)
+      setSource('adp')
+    }
+
+    load()
+      .catch((err: unknown) => {
+        if (!cancelled)
+          setError(
+            err instanceof Error ? err.message : 'Failed to load rankings',
+          )
+      })
+      .finally(() => {
+        if (!cancelled) setRanksLoadedKey(key)
+      })
+
+    return () => {
+      cancelled = true
+    }
+    // format is included so switching between two formats that both have
+    // zero rank sets (selectedSetId staying null both times) still refetches
+    // the ADP preview for the new format, instead of leaving the old one on
+    // screen.
+  }, [selectedSetId, format, rankSetsLoaded])
+
   async function handleLoadFromAdp() {
-    setLoading(true)
+    setAdpLoading(true)
     setError(null)
     setSaveMessage(null)
     try {
@@ -76,24 +160,90 @@ export function RankingsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load ADP order')
     } finally {
-      setLoading(false)
+      setAdpLoading(false)
     }
   }
 
   async function handleSave() {
+    if (selectedSetId === null) return
     setSaving(true)
     setError(null)
     try {
-      const result = await saveRanks(
-        { season: SEASON, format },
+      const result = await saveRanksForSet(
+        selectedSetId,
         workingList.map((row) => row.platform_player_id),
       )
       setSaveMessage(`Saved ${result.count} ranks`)
       setSource('saved')
+      const sets = await fetchRankSets({ season: SEASON, format })
+      setRankSets(sets)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save ranks')
     } finally {
       setSaving(false)
+    }
+  }
+
+  function startCreate() {
+    setError(null)
+    setRenamingName(null)
+    setConfirmingDelete(false)
+    const formatLabel = FORMATS.find((f) => f.value === format)?.label ?? format
+    setCreatingName(`${formatLabel} Ranks`)
+  }
+
+  async function confirmCreate() {
+    if (!creatingName || creatingName.trim() === '') return
+    setError(null)
+    try {
+      const created = await createRankSet({
+        name: creatingName,
+        season: SEASON,
+        format,
+        seed_from_adp: true,
+      })
+      setRankSets((prev) => [...prev, created])
+      setSelectedSetId(created.id)
+      setCreatingName(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create rank set')
+    }
+  }
+
+  function startRename() {
+    if (!selectedSet) return
+    setError(null)
+    setCreatingName(null)
+    setConfirmingDelete(false)
+    setRenamingName(selectedSet.name)
+  }
+
+  async function confirmRename() {
+    if (selectedSetId === null || !renamingName || renamingName.trim() === '')
+      return
+    setError(null)
+    try {
+      const updated = await renameRankSet(selectedSetId, renamingName)
+      setRankSets((prev) =>
+        prev.map((s) => (s.id === updated.id ? updated : s)),
+      )
+      setRenamingName(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to rename rank set')
+    }
+  }
+
+  async function confirmDelete() {
+    if (selectedSetId === null) return
+    setError(null)
+    try {
+      await deleteRankSet(selectedSetId)
+      const remaining = rankSets.filter((s) => s.id !== selectedSetId)
+      setRankSets(remaining)
+      setSelectedSetId(remaining.length > 0 ? remaining[0].id : null)
+      setConfirmingDelete(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete rank set')
     }
   }
 
@@ -171,14 +321,95 @@ export function RankingsPage() {
             </option>
           ))}
         </select>
-        <button type="button" onClick={handleLoadFromAdp} disabled={loading}>
+
+        {rankSets.length > 0 && (
+          <select
+            className="rankings-format"
+            value={selectedSetId ?? ''}
+            onChange={(e) => setSelectedSetId(Number(e.target.value))}
+            aria-label="Rank set"
+          >
+            {rankSets.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.player_count})
+              </option>
+            ))}
+          </select>
+        )}
+
+        {creatingName !== null ? (
+          <>
+            <input
+              className="rankings-format"
+              value={creatingName}
+              onChange={(e) => setCreatingName(e.target.value)}
+              aria-label="New rank set name"
+              autoFocus
+            />
+            <button type="button" onClick={confirmCreate}>
+              Create
+            </button>
+            <button type="button" onClick={() => setCreatingName(null)}>
+              Cancel
+            </button>
+          </>
+        ) : renamingName !== null ? (
+          <>
+            <input
+              className="rankings-format"
+              value={renamingName}
+              onChange={(e) => setRenamingName(e.target.value)}
+              aria-label="Rename rank set"
+              autoFocus
+            />
+            <button type="button" onClick={confirmRename}>
+              Rename
+            </button>
+            <button type="button" onClick={() => setRenamingName(null)}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={startCreate}>
+              + New Rank Set
+            </button>
+            {selectedSet && (
+              <button type="button" onClick={startRename}>
+                Rename
+              </button>
+            )}
+            {selectedSet &&
+              (confirmingDelete ? (
+                <>
+                  <button type="button" onClick={confirmDelete}>
+                    Confirm delete?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setConfirmingDelete(true)}>
+                  Delete
+                </button>
+              ))}
+          </>
+        )}
+
+        <button type="button" onClick={handleLoadFromAdp} disabled={adpLoading}>
           Load from ADP
         </button>
         <button
           type="button"
           className="rankings-save"
           onClick={handleSave}
-          disabled={saving || workingList.length === 0}
+          disabled={
+            saving || workingList.length === 0 || selectedSetId === null
+          }
         >
           {saving ? 'Saving…' : 'Save Ranks'}
         </button>
@@ -186,6 +417,12 @@ export function RankingsPage() {
           <span className="rankings-save-message">{saveMessage}</span>
         )}
       </div>
+
+      {rankSets.length === 0 && (
+        <p className="rankings-source-note">
+          No rank sets for this format yet — create one to start saving.
+        </p>
+      )}
 
       {source === 'adp' && (
         <p className="rankings-source-note">

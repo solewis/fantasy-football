@@ -1,24 +1,41 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import {
   createLeague,
-  deleteLeague,
-  fetchLeagues,
   lookupSleeperLeague,
-  syncLeague,
-  updateLeagueRankSet,
   type LeagueLookup,
   type LeagueSummary,
 } from '../../api/leagues'
+import type { DraftSummary } from '../../lib/draftSummary'
 import { FORMATS, SEASON } from '../../lib/formats'
 import { RankSetPicker } from './RankSetPicker'
 import './leagues.css'
 
-export function LeaguesPage() {
-  const [leagues, setLeagues] = useState<LeagueSummary[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+interface LeaguesPageProps {
+  leagues: LeagueSummary[]
+  loading: boolean
+  error: string | null
+  draftsByLeague: Map<number, DraftSummary>
+  onLeagueCreated: (created: LeagueSummary) => void
+  onSelectLeague: (leagueId: number) => void
+  onStartAdHoc: () => void
+}
 
+/** The Leagues list -- the app's home screen. Drilling into a league (its
+ * rank set, team names, sync/delete, and its draft) lives on
+ * LeagueDetailPage; this page only lists leagues and lets you add a new
+ * one. A draft with no saved League still has a way in, via the de-emphasized
+ * footer link -- kept secondary on purpose, since a saved League is now the
+ * primary path into a draft. */
+export function LeaguesPage({
+  leagues,
+  loading,
+  error,
+  draftsByLeague,
+  onLeagueCreated,
+  onSelectLeague,
+  onStartAdHoc,
+}: LeaguesPageProps) {
   const [adding, setAdding] = useState(false)
   const [leagueIdInput, setLeagueIdInput] = useState('')
   const [lookingUp, setLookingUp] = useState(false)
@@ -27,20 +44,7 @@ export function LeaguesPage() {
   const [confirmFormat, setConfirmFormat] = useState('half_ppr')
   const [confirmRankSetId, setConfirmRankSetId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
-
-  const [syncingId, setSyncingId] = useState<number | null>(null)
-  const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(
-    null,
-  )
-
-  useEffect(() => {
-    fetchLeagues()
-      .then(setLeagues)
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : 'Failed to load leagues'),
-      )
-      .finally(() => setLoading(false))
-  }, [])
+  const [createError, setCreateError] = useState<string | null>(null)
 
   function startAdd() {
     setAdding(true)
@@ -76,63 +80,29 @@ export function LeaguesPage() {
 
   async function handleCreate() {
     setCreating(true)
-    setError(null)
+    setCreateError(null)
     try {
       const created = await createLeague({
         platform_league_id: leagueIdInput.trim(),
         format: confirmFormat,
         rank_set_id: confirmRankSetId,
       })
-      setLeagues((prev) => [...prev, created])
+      onLeagueCreated(created)
       setAdding(false)
       setLookupResult(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create league')
+      setCreateError(
+        err instanceof Error ? err.message : 'Failed to create league',
+      )
     } finally {
       setCreating(false)
-    }
-  }
-
-  async function handleSync(leagueId: number) {
-    setSyncingId(leagueId)
-    setError(null)
-    try {
-      const updated = await syncLeague(leagueId)
-      setLeagues((prev) => prev.map((l) => (l.id === leagueId ? updated : l)))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sync league')
-    } finally {
-      setSyncingId(null)
-    }
-  }
-
-  async function handleDelete(leagueId: number) {
-    setError(null)
-    try {
-      await deleteLeague(leagueId)
-      setLeagues((prev) => prev.filter((l) => l.id !== leagueId))
-      setConfirmingDeleteId(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete league')
-    }
-  }
-
-  async function handleRankSetChange(
-    leagueId: number,
-    rankSetId: number | null,
-  ) {
-    setError(null)
-    try {
-      const updated = await updateLeagueRankSet(leagueId, rankSetId)
-      setLeagues((prev) => prev.map((l) => (l.id === leagueId ? updated : l)))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update rank set')
     }
   }
 
   return (
     <div className="leagues-page">
       {error && <p className="leagues-error">{error}</p>}
+      {createError && <p className="leagues-error">{createError}</p>}
 
       {!adding && (
         <div className="leagues-toolbar">
@@ -208,69 +178,42 @@ export function LeaguesPage() {
         </p>
       ) : (
         <ul className="leagues-list">
-          {leagues.map((l) => (
-            <li key={l.id} className="league-card">
-              <div className="league-card-header">
-                <strong>{l.name}</strong>
-                <span className="league-card-meta">
-                  {FORMATS.find((f) => f.value === l.format)?.label ?? l.format}{' '}
-                  · {l.num_teams} teams
-                </span>
-              </div>
-
-              <label className="league-card-rankset">
-                Rank set
-                <RankSetPicker
-                  season={l.season}
-                  format={l.format}
-                  value={l.rank_set_id}
-                  onChange={(id) => handleRankSetChange(l.id, id)}
-                />
-              </label>
-
-              {Object.keys(l.team_names).length > 0 && (
-                <div className="league-card-teams">
-                  {Object.entries(l.team_names).map(([rosterId, name]) => (
-                    <span key={rosterId} className="league-team-chip">
-                      {name}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <div className="league-card-actions">
+          {leagues.map((l) => {
+            const draft = draftsByLeague.get(l.id)
+            return (
+              <li key={l.id}>
                 <button
                   type="button"
-                  onClick={() => handleSync(l.id)}
-                  disabled={syncingId === l.id}
+                  className="league-card league-card-button"
+                  onClick={() => onSelectLeague(l.id)}
                 >
-                  {syncingId === l.id ? 'Syncing…' : 'Sync from Sleeper'}
+                  <div className="league-card-header">
+                    <strong>{l.name}</strong>
+                    <span className="league-card-meta">
+                      {FORMATS.find((f) => f.value === l.format)?.label ??
+                        l.format}{' '}
+                      · {l.num_teams} teams
+                    </span>
+                  </div>
+                  {draft && (
+                    <span className="league-card-draft-badge">
+                      {draft.is_complete
+                        ? 'Draft complete'
+                        : `Draft in progress · Round ${draft.current_round}, Pick ${draft.next_pick_number}`}
+                    </span>
+                  )}
                 </button>
-                {confirmingDeleteId === l.id ? (
-                  <>
-                    <button type="button" onClick={() => handleDelete(l.id)}>
-                      Confirm delete?
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmingDeleteId(null)}
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDeleteId(l.id)}
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ul>
       )}
+
+      <p className="leagues-adhoc-link">
+        <button type="button" onClick={onStartAdHoc}>
+          Start a draft without a league →
+        </button>
+      </p>
     </div>
   )
 }

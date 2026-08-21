@@ -302,3 +302,58 @@ def test_post_draft_from_league_no_active_draft_is_400(api_client, monkeypatch):
     response = client.post("/drafts/league", json={"league_id": league_id, "my_slot": 1})
 
     assert response.status_code == 400
+
+
+def test_post_draft_from_league_slot_out_of_range_is_400(api_client):
+    client, session_factory = api_client
+    league_id = seed_league(session_factory)  # num_teams=2
+
+    response = client.post("/drafts/league", json={"league_id": league_id, "my_slot": 5})
+
+    assert response.status_code == 400
+
+
+def test_get_drafts_empty(api_client):
+    client, _session_factory = api_client
+
+    response = client.get("/drafts")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_get_drafts_unfiltered_returns_every_draft(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    create_draft(client)
+    create_draft(client)
+
+    response = client.get("/drafts")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+
+def test_get_drafts_filters_by_league_id(api_client, monkeypatch):
+    client, session_factory = api_client
+    seed(session_factory)
+    create_draft(client)  # a manual draft with no league -- must be excluded
+    league_id = seed_league(session_factory)
+    monkeypatch.setattr(sleeper_league, "fetch_raw_league", lambda league_id: {"draft_id": "555"})
+    monkeypatch.setattr(
+        sleeper_draft,
+        "fetch_raw_draft",
+        lambda draft_id: {"season": "2026", "settings": {"teams": 2, "rounds": 2}},
+    )
+    league_draft_id = client.post(
+        "/drafts/league", json={"league_id": league_id, "my_slot": 1}
+    ).json()["draft"]["id"]
+
+    response = client.get(f"/drafts?league_id={league_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [row["id"] for row in body] == [league_draft_id]
+    assert body[0]["pick_count"] == 0
+    assert body[0]["next_pick_number"] == 1
+    assert body[0]["is_complete"] is False

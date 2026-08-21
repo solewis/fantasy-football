@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import {
   createDraft,
-  createDraftFromLeague,
   createSleeperDraft,
   type DraftStatus,
 } from '../../api/draft'
-import { fetchLeagues, type LeagueSummary } from '../../api/leagues'
 import { FORMATS, SEASON } from '../../lib/formats'
 import './draft.css'
 
@@ -14,7 +12,7 @@ interface DraftSetupFormProps {
   onCreated: (status: DraftStatus) => void
 }
 
-type Mode = 'manual' | 'sleeper' | 'league'
+type Mode = 'manual' | 'sleeper'
 
 export function DraftSetupForm({ onCreated }: DraftSetupFormProps) {
   const [mode, setMode] = useState<Mode>('manual')
@@ -26,35 +24,12 @@ export function DraftSetupForm({ onCreated }: DraftSetupFormProps) {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [leagues, setLeagues] = useState<LeagueSummary[]>([])
-  const [leaguesError, setLeaguesError] = useState<string | null>(null)
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null)
-
-  useEffect(() => {
-    fetchLeagues()
-      .then((rows) => {
-        setLeagues(rows)
-        setSelectedLeagueId((current) => current ?? rows[0]?.id ?? null)
-      })
-      .catch((err: unknown) =>
-        setLeaguesError(
-          err instanceof Error ? err.message : 'Failed to load leagues',
-        ),
-      )
-  }, [])
-
-  const selectedLeague = leagues.find((l) => l.id === selectedLeagueId) ?? null
-
-  const slotOutOfRange =
-    mySlot < 1 ||
-    (mode === 'manual' && mySlot > numTeams) ||
-    (mode === 'league' && !!selectedLeague && mySlot > selectedLeague.num_teams)
+  const slotOutOfRange = mySlot < 1 || (mode === 'manual' && mySlot > numTeams)
   const sleeperIdMissing = mode === 'sleeper' && sleeperDraftId.trim() === ''
-  const leagueMissing = mode === 'league' && selectedLeagueId === null
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (slotOutOfRange || sleeperIdMissing || leagueMissing) return
+    if (slotOutOfRange || sleeperIdMissing) return
 
     setCreating(true)
     setError(null)
@@ -68,16 +43,11 @@ export function DraftSetupForm({ onCreated }: DraftSetupFormProps) {
               num_rounds: numRounds,
               my_slot: mySlot,
             })
-          : mode === 'sleeper'
-            ? await createSleeperDraft({
-                platform_draft_id: sleeperDraftId.trim(),
-                format,
-                my_slot: mySlot,
-              })
-            : await createDraftFromLeague({
-                league_id: selectedLeagueId as number,
-                my_slot: mySlot,
-              })
+          : await createSleeperDraft({
+              platform_draft_id: sleeperDraftId.trim(),
+              format,
+              my_slot: mySlot,
+            })
       onCreated(status)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create draft')
@@ -113,15 +83,6 @@ export function DraftSetupForm({ onCreated }: DraftSetupFormProps) {
         >
           Sync from Sleeper
         </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'league'}
-          className={`draft-setup-mode-tab${mode === 'league' ? ' active' : ''}`}
-          onClick={() => setMode('league')}
-        >
-          From a League
-        </button>
       </div>
 
       {mode === 'sleeper' ? (
@@ -134,32 +95,6 @@ export function DraftSetupForm({ onCreated }: DraftSetupFormProps) {
             placeholder="e.g. 1124821633228341249"
           />
         </label>
-      ) : mode === 'league' ? (
-        <>
-          {leaguesError && <p className="draft-setup-error">{leaguesError}</p>}
-          {leagues.length === 0 && !leaguesError ? (
-            <p className="draft-setup-error">
-              No leagues yet — add one from the Leagues tab first.
-            </p>
-          ) : (
-            <label>
-              League
-              <select
-                value={selectedLeagueId ?? ''}
-                onChange={(e) => setSelectedLeagueId(Number(e.target.value))}
-              >
-                {leagues.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name} (
-                    {FORMATS.find((f) => f.value === l.format)?.label ??
-                      l.format}
-                    , {l.num_teams} teams)
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </>
       ) : (
         <>
           <label>
@@ -191,45 +126,33 @@ export function DraftSetupForm({ onCreated }: DraftSetupFormProps) {
         <input
           type="number"
           min={1}
-          max={
-            mode === 'manual'
-              ? numTeams
-              : mode === 'league'
-                ? selectedLeague?.num_teams
-                : undefined
-          }
+          max={mode === 'manual' ? numTeams : undefined}
           value={mySlot}
           onChange={(e) => setMySlot(Number(e.target.value))}
         />
       </label>
-      {slotOutOfRange &&
-        (mode === 'manual' || (mode === 'league' && selectedLeague)) && (
-          <p className="draft-setup-error">
-            Slot must be between 1 and{' '}
-            {mode === 'manual' ? numTeams : selectedLeague?.num_teams}.
-          </p>
-        )}
-
-      {mode !== 'league' && (
-        <label>
-          Scoring format
-          <select value={format} onChange={(e) => setFormat(e.target.value)}>
-            {FORMATS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </label>
+      {slotOutOfRange && mode === 'manual' && (
+        <p className="draft-setup-error">
+          Slot must be between 1 and {numTeams}.
+        </p>
       )}
+
+      <label>
+        Scoring format
+        <select value={format} onChange={(e) => setFormat(e.target.value)}>
+          {FORMATS.map((f) => (
+            <option key={f.value} value={f.value}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       {error && <p className="draft-setup-error">{error}</p>}
 
       <button
         type="submit"
-        disabled={
-          creating || slotOutOfRange || sleeperIdMissing || leagueMissing
-        }
+        disabled={creating || slotOutOfRange || sleeperIdMissing}
       >
         {creating ? 'Starting…' : 'Start Draft'}
       </button>

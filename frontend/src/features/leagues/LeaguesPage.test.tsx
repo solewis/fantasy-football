@@ -3,19 +3,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LeagueSummary } from '../../api/leagues'
 import type { RankSetSummary } from '../../api/ranks'
+import type { DraftSummary } from '../../lib/draftSummary'
 import { LeaguesPage } from './LeaguesPage'
 
 function jsonResponse(body: unknown) {
   return { ok: true, json: () => Promise.resolve(body) }
 }
 
-function noContentResponse() {
-  return { ok: true, status: 204, json: () => Promise.resolve(null) }
+const sampleLeague: LeagueSummary = {
+  id: 1,
+  platform: 'sleeper',
+  platform_league_id: '999',
+  name: 'Sunday Funday',
+  season: '2026',
+  format: 'half_ppr',
+  num_teams: 10,
+  roster_positions: ['QB'],
+  team_names: {},
+  rank_set_id: null,
 }
 
-/** A small in-memory stand-in for the leagues + rank-sets backend. */
+/** A small in-memory stand-in for the leagues + rank-sets backend --
+ * LeaguesPage only makes network calls for its own "+ Add League" flow now
+ * (the list itself and per-league drafts are props from LeaguesSection). */
 function mockBackend({
-  initialLeagues = [],
   initialRankSets = [],
   lookupResult = {
     name: 'Sunday Funday',
@@ -25,7 +36,6 @@ function mockBackend({
     suggested_format: 'half_ppr',
   },
 }: {
-  initialLeagues?: LeagueSummary[]
   initialRankSets?: RankSetSummary[]
   lookupResult?: {
     name: string
@@ -35,9 +45,7 @@ function mockBackend({
     suggested_format: string | null
   }
 } = {}) {
-  let leagues = [...initialLeagues]
   let rankSets = [...initialRankSets]
-  let nextLeagueId = Math.max(0, ...leagues.map((l) => l.id)) + 1
   let nextRankSetId = Math.max(0, ...rankSets.map((s) => s.id)) + 1
 
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
@@ -50,12 +58,9 @@ function mockBackend({
     if (pathname === '/leagues/lookup' && method === 'GET') {
       return Promise.resolve(jsonResponse(lookupResult))
     }
-    if (pathname === '/leagues' && method === 'GET') {
-      return Promise.resolve(jsonResponse([...leagues]))
-    }
     if (pathname === '/leagues' && method === 'POST') {
       const created: LeagueSummary = {
-        id: nextLeagueId++,
+        id: 1,
         platform: 'sleeper',
         platform_league_id: body?.platform_league_id as string,
         name: lookupResult.name,
@@ -63,40 +68,11 @@ function mockBackend({
         format: body?.format as string,
         num_teams: lookupResult.num_teams,
         roster_positions: lookupResult.roster_positions,
-        team_names: { '1': 'Bourrow my Toe' },
+        team_names: {},
         rank_set_id: (body?.rank_set_id as number | null) ?? null,
       }
-      leagues = [...leagues, created]
       return Promise.resolve(jsonResponse(created))
     }
-
-    const syncMatch = pathname.match(/^\/leagues\/(\d+)\/sync$/)
-    if (syncMatch && method === 'POST') {
-      const id = Number(syncMatch[1])
-      leagues = leagues.map((l) =>
-        l.id === id ? { ...l, name: 'Renamed League' } : l,
-      )
-      return Promise.resolve(jsonResponse(leagues.find((l) => l.id === id)))
-    }
-
-    const rankSetPatchMatch = pathname.match(/^\/leagues\/(\d+)\/rank-set$/)
-    if (rankSetPatchMatch && method === 'PATCH') {
-      const id = Number(rankSetPatchMatch[1])
-      leagues = leagues.map((l) =>
-        l.id === id
-          ? { ...l, rank_set_id: body?.rank_set_id as number | null }
-          : l,
-      )
-      return Promise.resolve(jsonResponse(leagues.find((l) => l.id === id)))
-    }
-
-    const deleteMatch = pathname.match(/^\/leagues\/(\d+)$/)
-    if (deleteMatch && method === 'DELETE') {
-      const id = Number(deleteMatch[1])
-      leagues = leagues.filter((l) => l.id !== id)
-      return Promise.resolve(noContentResponse())
-    }
-
     if (pathname === '/rank-sets' && method === 'GET') {
       const format = searchParams.get('format')
       return Promise.resolve(
@@ -112,13 +88,9 @@ function mockBackend({
         format: body?.format as string,
         player_count: body?.seed_from_adp ? 250 : 0,
       }
-      rankSets.push(created)
+      rankSets = [...rankSets, created]
       return Promise.resolve(jsonResponse(created))
     }
-    if (pathname === '/players') {
-      return Promise.resolve(jsonResponse([]))
-    }
-
     return Promise.resolve(jsonResponse([]))
   })
 
@@ -126,23 +98,42 @@ function mockBackend({
   return fetchMock
 }
 
+const noop = {
+  onLeagueCreated: vi.fn(),
+  onSelectLeague: vi.fn(),
+  onStartAdHoc: vi.fn(),
+}
+
 beforeEach(() => {
   vi.unstubAllGlobals()
 })
 
 describe('LeaguesPage', () => {
-  it('shows an empty state when there are no leagues yet', async () => {
-    mockBackend({ initialLeagues: [] })
+  it('shows an empty state when there are no leagues yet', () => {
+    render(
+      <LeaguesPage
+        leagues={[]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map()}
+        {...noop}
+      />,
+    )
 
-    render(<LeaguesPage />)
-
-    expect(await screen.findByText(/No leagues yet/)).toBeInTheDocument()
+    expect(screen.getByText(/No leagues yet/)).toBeInTheDocument()
   })
 
   it('looking up a league shows a preview with the suggested format', async () => {
-    mockBackend({ initialLeagues: [] })
-    render(<LeaguesPage />)
-    await screen.findByText(/No leagues yet/)
+    mockBackend()
+    render(
+      <LeaguesPage
+        leagues={[]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map()}
+        {...noop}
+      />,
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add League' }))
     fireEvent.change(screen.getByPlaceholderText(/e.g. 139/), {
@@ -157,10 +148,19 @@ describe('LeaguesPage', () => {
     ).toBe('half_ppr')
   })
 
-  it('adding a league posts to /leagues and appends it to the list', async () => {
-    const fetchMock = mockBackend({ initialLeagues: [] })
-    render(<LeaguesPage />)
-    await screen.findByText(/No leagues yet/)
+  it('adding a league posts to /leagues and calls onLeagueCreated', async () => {
+    const fetchMock = mockBackend()
+    const onLeagueCreated = vi.fn()
+    render(
+      <LeaguesPage
+        leagues={[]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map()}
+        {...noop}
+        onLeagueCreated={onLeagueCreated}
+      />,
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add League' }))
     fireEvent.change(screen.getByPlaceholderText(/e.g. 139/), {
@@ -171,12 +171,9 @@ describe('LeaguesPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add League' }))
     await vi.waitFor(() => {
-      expect(
-        screen.queryByRole('button', { name: 'Adding…' }),
-      ).not.toBeInTheDocument()
+      expect(onLeagueCreated).toHaveBeenCalled()
     })
 
-    expect(screen.getByText('Sunday Funday')).toBeInTheDocument()
     const postCall = fetchMock.mock.calls.find(
       ([url, init]) =>
         (url as string).includes('/leagues') &&
@@ -192,9 +189,16 @@ describe('LeaguesPage', () => {
   })
 
   it('creating a new rank set from the picker seeds it from ADP and selects it', async () => {
-    mockBackend({ initialLeagues: [], initialRankSets: [] })
-    render(<LeaguesPage />)
-    await screen.findByText(/No leagues yet/)
+    mockBackend({ initialRankSets: [] })
+    render(
+      <LeaguesPage
+        leagues={[]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map()}
+        {...noop}
+      />,
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add League' }))
     fireEvent.change(screen.getByPlaceholderText(/e.g. 139/), {
@@ -214,132 +218,63 @@ describe('LeaguesPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('syncing a league updates it in place', async () => {
-    mockBackend({
-      initialLeagues: [
-        {
-          id: 1,
-          platform: 'sleeper',
-          platform_league_id: '999',
-          name: 'Sunday Funday',
-          season: '2026',
-          format: 'half_ppr',
-          num_teams: 10,
-          roster_positions: ['QB'],
-          team_names: {},
-          rank_set_id: null,
-        },
-      ],
-    })
-    render(<LeaguesPage />)
-    await screen.findByText('Sunday Funday')
+  it('clicking a league card calls onSelectLeague', () => {
+    const onSelectLeague = vi.fn()
+    render(
+      <LeaguesPage
+        leagues={[sampleLeague]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map()}
+        {...noop}
+        onSelectLeague={onSelectLeague}
+      />,
+    )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sync from Sleeper' }))
+    fireEvent.click(screen.getByRole('button', { name: /Sunday Funday/ }))
 
-    expect(await screen.findByText('Renamed League')).toBeInTheDocument()
+    expect(onSelectLeague).toHaveBeenCalledWith(1)
   })
 
-  it('deleting a league requires a confirm click', async () => {
-    mockBackend({
-      initialLeagues: [
-        {
-          id: 1,
-          platform: 'sleeper',
-          platform_league_id: '999',
-          name: 'Sunday Funday',
-          season: '2026',
-          format: 'half_ppr',
-          num_teams: 10,
-          roster_positions: ['QB'],
-          team_names: {},
-          rank_set_id: null,
-        },
-      ],
-    })
-    render(<LeaguesPage />)
-    await screen.findByText('Sunday Funday')
+  it('shows a draft-in-progress badge for a league with an active draft', () => {
+    const draft: DraftSummary = {
+      id: 5,
+      next_pick_number: 4,
+      current_round: 2,
+      is_complete: false,
+    }
+    render(
+      <LeaguesPage
+        leagues={[sampleLeague]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map([[sampleLeague.id, draft]])}
+        {...noop}
+      />,
+    )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
-    expect(screen.getByText('Sunday Funday')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete?' }))
-
-    expect(await screen.findByText(/No leagues yet/)).toBeInTheDocument()
+    expect(
+      screen.getByText('Draft in progress · Round 2, Pick 4'),
+    ).toBeInTheDocument()
   })
 
-  it("shows a league's team names as chips", async () => {
-    mockBackend({
-      initialLeagues: [
-        {
-          id: 1,
-          platform: 'sleeper',
-          platform_league_id: '999',
-          name: 'Sunday Funday',
-          season: '2026',
-          format: 'half_ppr',
-          num_teams: 10,
-          roster_positions: ['QB'],
-          team_names: { '1': 'Bourrow my Toe', '2': 'Rowdy Owls' },
-          rank_set_id: null,
-        },
-      ],
-    })
-    render(<LeaguesPage />)
+  it('clicking the ad-hoc footer link calls onStartAdHoc', () => {
+    const onStartAdHoc = vi.fn()
+    render(
+      <LeaguesPage
+        leagues={[]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map()}
+        {...noop}
+        onStartAdHoc={onStartAdHoc}
+      />,
+    )
 
-    expect(await screen.findByText('Bourrow my Toe')).toBeInTheDocument()
-    expect(screen.getByText('Rowdy Owls')).toBeInTheDocument()
-  })
+    fireEvent.click(
+      screen.getByRole('button', { name: /Start a draft without a league/ }),
+    )
 
-  it("changing a league's rank set calls the update endpoint", async () => {
-    const fetchMock = mockBackend({
-      initialLeagues: [
-        {
-          id: 1,
-          platform: 'sleeper',
-          platform_league_id: '999',
-          name: 'Sunday Funday',
-          season: '2026',
-          format: 'half_ppr',
-          num_teams: 10,
-          roster_positions: ['QB'],
-          team_names: {},
-          rank_set_id: null,
-        },
-      ],
-      initialRankSets: [
-        {
-          id: 5,
-          name: 'Main',
-          platform: 'sleeper',
-          season: '2026',
-          format: 'half_ppr',
-          player_count: 300,
-        },
-      ],
-    })
-    render(<LeaguesPage />)
-    await screen.findByText('Sunday Funday')
-    // wait for the async rank-sets fetch to populate the <option> before
-    // selecting it -- jsdom silently ignores setting a <select>'s value to
-    // one with no matching <option> yet.
-    await screen.findByRole('option', { name: 'Main (300)' })
-
-    fireEvent.change(screen.getByLabelText('Rank set'), {
-      target: { value: '5' },
-    })
-
-    const patchCall = await vi.waitFor(() => {
-      const calls = fetchMock.mock.calls.filter(
-        ([url, init]) =>
-          (url as string).includes('/rank-set') &&
-          (init as RequestInit)?.method === 'PATCH',
-      )
-      const last = calls.at(-1)
-      if (!last) throw new Error('not called yet')
-      return last
-    })
-    const [, init] = patchCall as [string, RequestInit]
-    const body = JSON.parse(init.body as string) as { rank_set_id: number }
-    expect(body.rank_set_id).toBe(5)
+    expect(onStartAdHoc).toHaveBeenCalled()
   })
 })

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.ingest import sleeper_league
-from app.models import League
+from app.models import Draft, DraftPick, DraftQueueEntry, League
 
 PLATFORM = "sleeper"
 
@@ -114,6 +114,21 @@ def delete_league(session: Session, league_id: int) -> None:
     league = get_league(session, league_id)
     if league is None:
         raise LeagueError("League not found")
+
+    # No PRAGMA foreign_keys=ON in this app -- unlike RankSet (which a League
+    # only *references* and can outlive), a Draft created from a League is an
+    # owned child: get_status() derives its rank_set_id/roster_positions live
+    # from Draft.league, so an orphaned draft would just break. Cascade the
+    # delete explicitly rather than leaving it dangling.
+    draft_ids = [row[0] for row in session.query(Draft.id).filter_by(league_id=league_id).all()]
+    if draft_ids:
+        session.query(DraftPick).filter(DraftPick.draft_id.in_(draft_ids)).delete(
+            synchronize_session=False
+        )
+        session.query(DraftQueueEntry).filter(DraftQueueEntry.draft_id.in_(draft_ids)).delete(
+            synchronize_session=False
+        )
+        session.query(Draft).filter(Draft.id.in_(draft_ids)).delete(synchronize_session=False)
 
     session.delete(league)
     session.commit()

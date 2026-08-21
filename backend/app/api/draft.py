@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +12,7 @@ from app.draft import (
     create_draft_from_league,
     create_sleeper_draft,
     get_status,
+    list_drafts,
     list_queue,
     make_pick,
     replace_queue,
@@ -58,6 +60,26 @@ class DraftSummary(BaseModel):
     team_names: dict[str, str]
 
 
+class DraftListRow(BaseModel):
+    """A lightweight per-draft summary for the Leagues UI -- not a full
+    DraftStatus (no picks, no rank_set_id/roster_positions -- those need a
+    League join that list_drafts() deliberately skips per-row to avoid N+1)."""
+
+    id: int
+    platform: str
+    league_id: int | None
+    season: str
+    format: str
+    num_teams: int
+    num_rounds: int
+    my_slot: int
+    pick_count: int
+    next_pick_number: int | None
+    current_round: int | None
+    is_complete: bool
+    created_at: datetime
+
+
 class PickRow(BaseModel):
     pick_number: int
     round: int
@@ -99,6 +121,11 @@ class ReplaceQueueRequest(BaseModel):
 
 class ReplaceQueueResponse(BaseModel):
     count: int
+
+
+@router.get("", response_model=list[DraftListRow])
+def get_drafts(db: DbSession, league_id: int | None = None) -> list[DraftListRow]:
+    return [DraftListRow(**row) for row in list_drafts(db, league_id)]
 
 
 @router.post("", response_model=DraftStatus)

@@ -154,3 +154,75 @@
   font-size: 12px;
   padding: 5px 10px;
 }
+
+/* The list's cards are real <button>s now (clickable to drill into a
+   league) -- overrides .leagues-page button's generic reset with a more
+   specific selector, rather than !important, to keep the same card look. */
+.leagues-list button.league-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: inherit;
+  cursor: pointer;
+}
+
+.leagues-list button.league-card:hover {
+  border-color: var(--border-strong);
+}
+
+.league-card-draft-badge {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-page);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.leagues-adhoc-link {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.leagues-adhoc-link button {
+  font-size: 13px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
+.league-detail-back {
+  margin-bottom: 16px;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.league-detail-draft {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.league-detail-draft h3 {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}

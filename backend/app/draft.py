@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.draft_logic import pick_to_round_and_slot, total_picks
@@ -90,6 +90,8 @@ def create_draft_from_league(session: Session, league_id: int, my_slot: int) -> 
     league = session.get(League, league_id)
     if league is None:
         raise DraftError("League not found")
+    if not (1 <= my_slot <= league.num_teams):
+        raise DraftError(f"Slot must be between 1 and {league.num_teams}")
 
     try:
         raw_league = sleeper_league.fetch_raw_league(league.platform_league_id)
@@ -323,6 +325,50 @@ def get_status(session: Session, draft_id: int) -> dict | None:
         "is_my_turn": (not is_complete) and current_slot == draft.my_slot,
         "is_complete": is_complete,
     }
+
+
+def list_drafts(session: Session, league_id: int | None = None) -> list[dict]:
+    """Lightweight draft summaries for the Leagues UI -- deliberately not a full
+    get_status() per row (that would N+1 into a League lookup per draft, and
+    the Leagues list only needs "is there a draft, and how far along is it").
+    One grouped query for pick counts, no N+1. Ordered newest-first by id (the
+    monotonic authority -- created_at can tie within the same second).
+    """
+    query = (
+        session.query(Draft, func.count(DraftPick.id))
+        .outerjoin(DraftPick, DraftPick.draft_id == Draft.id)
+        .group_by(Draft.id)
+        .order_by(Draft.id.desc())
+    )
+    if league_id is not None:
+        query = query.filter(Draft.league_id == league_id)
+
+    results = []
+    for draft, pick_count in query.all():
+        max_picks = total_picks(draft.num_teams, draft.num_rounds)
+        next_pick_number = pick_count + 1
+        is_complete = next_pick_number > max_picks
+        current_round = None
+        if not is_complete:
+            current_round, _ = pick_to_round_and_slot(next_pick_number, draft.num_teams)
+        results.append(
+            {
+                "id": draft.id,
+                "platform": draft.platform,
+                "league_id": draft.league_id,
+                "season": draft.season,
+                "format": draft.format,
+                "num_teams": draft.num_teams,
+                "num_rounds": draft.num_rounds,
+                "my_slot": draft.my_slot,
+                "pick_count": pick_count,
+                "next_pick_number": None if is_complete else next_pick_number,
+                "current_round": current_round,
+                "is_complete": is_complete,
+                "created_at": draft.created_at,
+            }
+        )
+    return results
 
 
 def list_queue(session: Session, draft_id: int) -> list[dict]:

@@ -1,15 +1,18 @@
 import { useState } from 'react'
 
-import { DraftPage } from './features/draft/DraftPage'
-import { LeaguesPage } from './features/leagues/LeaguesPage'
+import { LeaguesSection } from './features/leagues/LeaguesSection'
 import { PlayersPage } from './features/players/PlayersPage'
 import { RankingsPage } from './features/rankings/RankingsPage'
 
-const TABS = ['Players', 'Rankings', 'Leagues', 'Draft'] as const
+// Draft is no longer its own tab -- it now lives inside a specific league
+// (LeaguesSection drills into LeagueDetailPage, which has its own Draft
+// section), with an ad-hoc/non-league path reachable as a de-emphasized
+// footer link from the Leagues list rather than a top-level peer.
+const TABS = ['Leagues', 'Rankings', 'Players'] as const
 type Tab = (typeof TABS)[number]
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('Players')
+  const [activeTab, setActiveTab] = useState<Tab>('Leagues')
 
   return (
     <div className="app-shell">
@@ -33,8 +36,7 @@ function App() {
       <main>
         {activeTab === 'Players' && <PlayersPage />}
         {activeTab === 'Rankings' && <RankingsPage />}
-        {activeTab === 'Leagues' && <LeaguesPage />}
-        {activeTab === 'Draft' && <DraftPage />}
+        {activeTab === 'Leagues' && <LeaguesSection />}
       </main>
     </div>
   )

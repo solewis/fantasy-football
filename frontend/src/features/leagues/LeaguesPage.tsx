@@ -196,6 +196,7 @@ export function LeaguesPage({
                 <RankSetPicker
                   season={SEASON}
                   format={confirmFormat}
+                  platform={platform}
                   value={confirmRankSetId}
                   onChange={setConfirmRankSetId}
                 />

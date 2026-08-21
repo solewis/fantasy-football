@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import {
   fetchSyncStatus,
   triggerAdpSync,
+  triggerEspnPlayersSync,
   triggerPlayersSync,
   type SyncStatus,
 } from '../../api/sync'
@@ -19,6 +20,7 @@ export function SyncPanel({ season, onSyncComplete }: SyncPanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [syncingPlayers, setSyncingPlayers] = useState(false)
   const [syncingAdp, setSyncingAdp] = useState(false)
+  const [syncingEspnPlayers, setSyncingEspnPlayers] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -67,6 +69,22 @@ export function SyncPanel({ season, onSyncComplete }: SyncPanelProps) {
     }
   }
 
+  async function handleSyncEspnPlayers() {
+    setSyncingEspnPlayers(true)
+    setError(null)
+    try {
+      const result = await triggerEspnPlayersSync()
+      setStatus((prev) => (prev ? { ...prev, espn_players: result } : prev))
+      onSyncComplete()
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to sync ESPN players',
+      )
+    } finally {
+      setSyncingEspnPlayers(false)
+    }
+  }
+
   return (
     <div className="sync-panel">
       <div className="sync-row">
@@ -105,6 +123,28 @@ export function SyncPanel({ season, onSyncComplete }: SyncPanelProps) {
         </span>
         <button type="button" onClick={handleSyncAdp} disabled={syncingAdp}>
           {syncingAdp ? 'Syncing…' : 'Sync ADP'}
+        </button>
+      </div>
+      <div className="sync-row">
+        <span className="sync-label">ESPN Players</span>
+        <span
+          className="sync-meta"
+          title={
+            status
+              ? formatExactDateTime(status.espn_players.last_synced_at)
+              : undefined
+          }
+        >
+          {status
+            ? `${formatRelativeTime(status.espn_players.last_synced_at)} · ${status.espn_players.record_count} players`
+            : '—'}
+        </span>
+        <button
+          type="button"
+          onClick={handleSyncEspnPlayers}
+          disabled={syncingEspnPlayers}
+        >
+          {syncingEspnPlayers ? 'Syncing…' : 'Sync ESPN players'}
         </button>
       </div>
       {error && <p className="sync-error">{error}</p>}

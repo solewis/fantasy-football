@@ -8,6 +8,7 @@ export interface PlayerRow {
 }
 
 export interface FetchPlayersParams {
+  platform?: string
   season?: string
   format?: string
   position?: string
@@ -20,6 +21,7 @@ export async function fetchPlayers(
   params: FetchPlayersParams,
 ): Promise<PlayerRow[]> {
   const query = new URLSearchParams()
+  if (params.platform) query.set('platform', params.platform)
   if (params.season) query.set('season', params.season)
   if (params.format) query.set('format', params.format)
   if (params.position) query.set('position', params.position)

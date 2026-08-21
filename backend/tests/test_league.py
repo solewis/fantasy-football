@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -5,7 +7,7 @@ from sqlalchemy.orm import Session
 from app import league
 from app.db import Base
 from app.ingest import sleeper_league
-from app.models import League
+from app.models import League, RankSet
 
 
 def make_session() -> Session:
@@ -133,16 +135,50 @@ def test_update_format(monkeypatch):
     assert updated.format == "ppr"
 
 
+def make_rank_set(session, platform: str = "sleeper") -> RankSet:
+    rank_set = RankSet(
+        name="Main",
+        platform=platform,
+        season="2026",
+        format="half_ppr",
+        created_at=datetime.now(UTC),
+    )
+    session.add(rank_set)
+    session.commit()
+    session.refresh(rank_set)
+    return rank_set
+
+
 def test_update_rank_set_can_set_and_clear(monkeypatch):
     session = make_session()
     stub_sleeper(monkeypatch)
     created = league.create_league(session, "sleeper", "999", format="half_ppr")
+    rank_set = make_rank_set(session, platform="sleeper")
 
-    league.update_rank_set(session, created.id, 42)
-    assert session.get(League, created.id).rank_set_id == 42
+    league.update_rank_set(session, created.id, rank_set.id)
+    assert session.get(League, created.id).rank_set_id == rank_set.id
 
     league.update_rank_set(session, created.id, None)
     assert session.get(League, created.id).rank_set_id is None
+
+
+def test_update_rank_set_raises_on_unknown_rank_set(monkeypatch):
+    session = make_session()
+    stub_sleeper(monkeypatch)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr")
+
+    with pytest.raises(league.LeagueError):
+        league.update_rank_set(session, created.id, 999)
+
+
+def test_update_rank_set_raises_on_platform_mismatch(monkeypatch):
+    session = make_session()
+    stub_sleeper(monkeypatch)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr")
+    espn_rank_set = make_rank_set(session, platform="espn")
+
+    with pytest.raises(league.LeagueError):
+        league.update_rank_set(session, created.id, espn_rank_set.id)
 
 
 def test_delete_league_removes_it(monkeypatch):

@@ -6,6 +6,7 @@ import App from './App'
 const emptySyncStatus = {
   players: { last_synced_at: null, record_count: 0 },
   adp: { season: '2026', last_synced_at: null, record_count: 0 },
+  espn_players: { last_synced_at: null, record_count: 0 },
 }
 
 beforeEach(() => {

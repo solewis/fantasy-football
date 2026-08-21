@@ -21,14 +21,15 @@ export async function fetchRankedOrAdpFallback(
   season: string,
   format: string,
   rankSetId?: number | null,
+  platform?: string,
 ): Promise<RankedPlayersResult> {
   const savedRows =
     rankSetId != null
       ? await fetchRanksForSet(rankSetId)
-      : await fetchRanks({ season, format })
+      : await fetchRanks({ season, format, platform })
   if (savedRows.length > 0) {
     return { rows: savedRows, source: 'saved' }
   }
-  const adpRows = await fetchPlayers({ season, format })
+  const adpRows = await fetchPlayers({ season, format, platform })
   return { rows: adpRows, source: 'adp' }
 }

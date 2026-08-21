@@ -9,6 +9,10 @@ import './draft.css'
 
 interface DraftPlayerPoolProps {
   format: string
+  /** The draft's own platform (already resolved from "manual" to a real
+   * platform by the caller -- see DraftRoom), used to fetch the right
+   * player/ADP pool. */
+  platform: string
   /** The League's assigned rank set, if this draft was created from one.
    * When set, reads that exact rank set instead of the format-based
    * "whichever set was created first" resolver. */
@@ -22,6 +26,7 @@ interface DraftPlayerPoolProps {
 
 export function DraftPlayerPool({
   format,
+  platform,
   rankSetId,
   draftedIds,
   queuedIds,
@@ -33,19 +38,19 @@ export function DraftPlayerPool({
   const [search, setSearch] = useState('')
   const [allRows, setAllRows] = useState<RankRow[]>([])
   const [error, setError] = useState<string | null>(null)
-  // format/rankSetId are props here (owned by the parent's draft setup), not
-  // a local selector, so there's no local event handler to set a "loading"
-  // flag from synchronously. Instead, "loading" is derived below from
-  // whether the most recently *loaded* key (set only from the async
+  // format/platform/rankSetId are props here (owned by the parent's draft
+  // setup), not a local selector, so there's no local event handler to set a
+  // "loading" flag from synchronously. Instead, "loading" is derived below
+  // from whether the most recently *loaded* key (set only from the async
   // callbacks) matches the current one.
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
-  const currentKey = `${format}:${rankSetId ?? 'none'}`
+  const currentKey = `${platform}:${format}:${rankSetId ?? 'none'}`
 
   useEffect(() => {
     let cancelled = false
-    const key = `${format}:${rankSetId ?? 'none'}`
+    const key = `${platform}:${format}:${rankSetId ?? 'none'}`
 
-    fetchRankedOrAdpFallback(SEASON, format, rankSetId)
+    fetchRankedOrAdpFallback(SEASON, format, rankSetId, platform)
       .then((result) => {
         if (cancelled) return
         setAllRows(result.rows)
@@ -61,7 +66,7 @@ export function DraftPlayerPool({
     return () => {
       cancelled = true
     }
-  }, [format, rankSetId])
+  }, [format, platform, rankSetId])
 
   const loading = loadedKey !== currentKey
 

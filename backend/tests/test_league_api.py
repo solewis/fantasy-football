@@ -136,12 +136,48 @@ def test_patch_league_rank_set_can_set_and_clear(api_client, monkeypatch):
     client, _session_factory = api_client
     stub_sleeper(monkeypatch)
     league_id = create_league(client)["id"]
+    rank_set_id = client.post(
+        "/rank-sets",
+        json={"name": "Main", "season": "2026", "format": "half_ppr", "seed_from_adp": False},
+    ).json()["id"]
 
-    set_response = client.patch(f"/leagues/{league_id}/rank-set", json={"rank_set_id": 42})
-    assert set_response.json()["rank_set_id"] == 42
+    set_response = client.patch(f"/leagues/{league_id}/rank-set", json={"rank_set_id": rank_set_id})
+    assert set_response.json()["rank_set_id"] == rank_set_id
 
     clear_response = client.patch(f"/leagues/{league_id}/rank-set", json={"rank_set_id": None})
     assert clear_response.json()["rank_set_id"] is None
+
+
+def test_patch_league_rank_set_unknown_is_400(api_client, monkeypatch):
+    client, _session_factory = api_client
+    stub_sleeper(monkeypatch)
+    league_id = create_league(client)["id"]
+
+    response = client.patch(f"/leagues/{league_id}/rank-set", json={"rank_set_id": 999})
+
+    assert response.status_code == 400
+
+
+def test_patch_league_rank_set_platform_mismatch_is_400(api_client, monkeypatch):
+    client, _session_factory = api_client
+    stub_sleeper(monkeypatch)
+    league_id = create_league(client)["id"]
+    espn_rank_set_id = client.post(
+        "/rank-sets",
+        json={
+            "name": "ESPN Main",
+            "season": "2026",
+            "format": "half_ppr",
+            "platform": "espn",
+            "seed_from_adp": False,
+        },
+    ).json()["id"]
+
+    response = client.patch(
+        f"/leagues/{league_id}/rank-set", json={"rank_set_id": espn_rank_set_id}
+    )
+
+    assert response.status_code == 400
 
 
 def test_delete_league_removes_it(api_client, monkeypatch):

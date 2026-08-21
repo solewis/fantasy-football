@@ -10,6 +10,10 @@ const statusResponse = {
     last_synced_at: '2026-08-19T11:00:00Z',
     record_count: 6799,
   },
+  espn_players: {
+    last_synced_at: '2026-08-19T09:00:00Z',
+    record_count: 1027,
+  },
 }
 
 function jsonResponse(body: unknown) {
@@ -91,6 +95,34 @@ describe('SyncPanel', () => {
     expect(onSyncComplete).toHaveBeenCalledTimes(1)
     const lastCall = fetchMock.mock.calls.at(-1) as [string, RequestInit]
     expect(lastCall[0]).toContain('/sync/adp')
+    expect(lastCall[1]).toMatchObject({ method: 'POST' })
+  })
+
+  it('triggers an ESPN players sync and calls onSyncComplete on success', async () => {
+    const onSyncComplete = vi.fn()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(statusResponse))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          last_synced_at: '2026-08-19T12:00:00Z',
+          record_count: 1030,
+          adp_record_count: 1030,
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<SyncPanel season="2026" onSyncComplete={onSyncComplete} />)
+    await screen.findByText(/1027 players/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync ESPN players' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/1030 players/)).toBeInTheDocument()
+    })
+    expect(onSyncComplete).toHaveBeenCalledTimes(1)
+    const lastCall = fetchMock.mock.calls.at(-1) as [string, RequestInit]
+    expect(lastCall[0]).toContain('/sync/espn-players')
     expect(lastCall[1]).toMatchObject({ method: 'POST' })
   })
 

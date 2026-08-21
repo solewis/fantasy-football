@@ -78,6 +78,7 @@ describe('DraftPlayerPool', () => {
     render(
       <DraftPlayerPool
         format="half_ppr"
+        platform="sleeper"
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -96,6 +97,7 @@ describe('DraftPlayerPool', () => {
     render(
       <DraftPlayerPool
         format="half_ppr"
+        platform="sleeper"
         rankSetId={5}
         draftedIds={new Set()}
         queuedIds={new Set()}
@@ -119,6 +121,7 @@ describe('DraftPlayerPool', () => {
     render(
       <DraftPlayerPool
         format="half_ppr"
+        platform="sleeper"
         draftedIds={new Set(['2'])}
         queuedIds={new Set()}
         canDraft={true}
@@ -138,6 +141,7 @@ describe('DraftPlayerPool', () => {
     render(
       <DraftPlayerPool
         format="half_ppr"
+        platform="sleeper"
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -159,6 +163,7 @@ describe('DraftPlayerPool', () => {
     render(
       <DraftPlayerPool
         format="half_ppr"
+        platform="sleeper"
         draftedIds={new Set()}
         queuedIds={new Set(['3'])}
         canDraft={true}
@@ -180,6 +185,7 @@ describe('DraftPlayerPool', () => {
     render(
       <DraftPlayerPool
         format="half_ppr"
+        platform="sleeper"
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -201,6 +207,7 @@ describe('DraftPlayerPool', () => {
     render(
       <DraftPlayerPool
         format="half_ppr"
+        platform="sleeper"
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={false}

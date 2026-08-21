@@ -8,6 +8,7 @@ export interface RankRow {
 }
 
 export interface RanksScope {
+  platform?: string
   season: string
   format: string
 }
@@ -25,6 +26,7 @@ export interface CreateRankSetParams {
   name: string
   season: string
   format: string
+  platform?: string
   seed_from_adp?: boolean
 }
 
@@ -53,6 +55,7 @@ export async function fetchRanks(scope: RanksScope): Promise<RankRow[]> {
     season: scope.season,
     format: scope.format,
   })
+  if (scope.platform) query.set('platform', scope.platform)
   const response = await fetch(`${API_BASE}/ranks?${query.toString()}`)
   return parseOrThrow(response, 'Fetching ranks')
 }
@@ -64,6 +67,7 @@ export async function fetchRankSets(
     season: scope.season,
     format: scope.format,
   })
+  if (scope.platform) query.set('platform', scope.platform)
   const response = await fetch(`${API_BASE}/rank-sets?${query.toString()}`)
   return parseOrThrow(response, 'Fetching rank sets')
 }

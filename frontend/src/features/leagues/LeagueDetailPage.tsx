@@ -146,6 +146,7 @@ export function LeagueDetailPage({
           <RankSetPicker
             season={league.season}
             format={league.format}
+            platform={league.platform}
             value={league.rank_set_id}
             onChange={handleRankSetChange}
           />

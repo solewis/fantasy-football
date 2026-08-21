@@ -11,6 +11,7 @@ import './leagues.css'
 interface RankSetPickerProps {
   season: string
   format: string
+  platform: string
   value: number | null
   onChange: (rankSetId: number | null) => void
 }
@@ -21,6 +22,7 @@ interface RankSetPickerProps {
 export function RankSetPicker({
   season,
   format,
+  platform,
   value,
   onChange,
 }: RankSetPickerProps) {
@@ -31,7 +33,7 @@ export function RankSetPicker({
   useEffect(() => {
     let cancelled = false
 
-    fetchRankSets({ season, format })
+    fetchRankSets({ season, format, platform })
       .then((sets) => {
         if (cancelled) return
         setRankSets(sets)
@@ -46,7 +48,7 @@ export function RankSetPicker({
     return () => {
       cancelled = true
     }
-  }, [season, format])
+  }, [season, format, platform])
 
   async function confirmCreate() {
     if (!creatingName || creatingName.trim() === '') return
@@ -56,6 +58,7 @@ export function RankSetPicker({
         name: creatingName,
         season,
         format,
+        platform,
         seed_from_adp: true,
       })
       setRankSets((prev) => [...prev, created])

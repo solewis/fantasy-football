@@ -199,6 +199,10 @@ export function DraftRoom({
     (pick) => pick.slot === status.draft.my_slot,
   )
   const isSleeperSynced = status.draft.platform === 'sleeper'
+  // Manual drafts have no player-source platform of their own -- default to
+  // Sleeper's pool, matching the backend's identical fallback in draft.py.
+  const playerPoolPlatform =
+    status.draft.platform === 'manual' ? 'sleeper' : status.draft.platform
 
   return (
     <div className="draft-page">
@@ -267,6 +271,7 @@ export function DraftRoom({
       <div className="draft-page-lower">
         <DraftPlayerPool
           format={status.draft.format}
+          platform={playerPoolPlatform}
           rankSetId={status.draft.rank_set_id}
           draftedIds={draftedIds}
           queuedIds={queuedIds}

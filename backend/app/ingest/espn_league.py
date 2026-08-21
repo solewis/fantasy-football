@@ -63,21 +63,21 @@ def normalize_platform_league_id(platform_league_id: str) -> str:
     return f"{DEFAULT_SEASON}:{platform_league_id}"
 
 
-def _split_league_id(platform_league_id: str) -> tuple[str, str]:
+def split_league_id(platform_league_id: str) -> tuple[str, str]:
     season, _, league_id = platform_league_id.partition(":")
     if not league_id:
         raise ESPNFetchError(f"Malformed ESPN league id {platform_league_id!r}")
     return season, league_id
 
 
-def _cookies() -> dict[str, str] | None:
+def cookies() -> dict[str, str] | None:
     if ESPN_S2 and ESPN_SWID:
         return {"espn_s2": ESPN_S2, "SWID": ESPN_SWID}
     return None
 
 
 def fetch_raw_league(platform_league_id: str, client: httpx.Client | None = None) -> dict:
-    season, league_id = _split_league_id(platform_league_id)
+    season, league_id = split_league_id(platform_league_id)
     owns_client = client is None
     client = client or new_client()
     try:
@@ -87,7 +87,7 @@ def fetch_raw_league(platform_league_id: str, client: httpx.Client | None = None
                 url,
                 params={"view": ["mSettings", "mTeam"]},
                 headers={"User-Agent": USER_AGENT},
-                cookies=_cookies(),
+                cookies=cookies(),
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

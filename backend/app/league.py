@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.ingest import platforms
 from app.ingest.errors import PlatformFetchError
-from app.models import Draft, DraftPick, DraftQueueEntry, League
+from app.models import Draft, DraftPick, DraftQueueEntry, League, RankSet
 
 
 class LeagueError(ValueError):
@@ -116,6 +116,15 @@ def update_rank_set(session: Session, league_id: int, rank_set_id: int | None) -
     league = get_league(session, league_id)
     if league is None:
         raise LeagueError("League not found")
+
+    if rank_set_id is not None:
+        rank_set = session.get(RankSet, rank_set_id)
+        if rank_set is None:
+            raise LeagueError("Rank set not found")
+        if rank_set.platform != league.platform:
+            raise LeagueError(
+                f"Can't assign a {rank_set.platform} rank set to a {league.platform} league"
+            )
 
     league.rank_set_id = rank_set_id
     session.commit()

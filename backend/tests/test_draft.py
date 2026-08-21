@@ -618,3 +618,42 @@ def test_list_drafts_marks_a_full_draft_complete():
     assert row["is_complete"] is True
     assert row["next_pick_number"] is None
     assert row["current_round"] is None
+
+
+def test_list_picks_resolves_against_a_non_sleeper_draft_platform():
+    """Regression test: list_picks/list_queue used to hardcode a join against
+    PlatformPlayer.platform == "sleeper" regardless of the draft's own
+    platform. A second platform's live-synced picks would silently disappear
+    from the board with no error (the inner join just matches nothing).
+    """
+    session = make_session()
+    session.add(
+        PlatformPlayer(
+            platform="espn",
+            platform_player_id="9001",
+            name="Test Player",
+            position="RB",
+            team="XXX",
+        )
+    )
+    espn_draft = Draft(
+        platform="espn",
+        platform_draft_id="league-key-123",
+        season="2026",
+        format="half_ppr",
+        num_teams=10,
+        num_rounds=14,
+        my_slot=1,
+        created_at=datetime.now(UTC),
+    )
+    session.add(espn_draft)
+    session.commit()
+    session.add(DraftPick(draft_id=espn_draft.id, pick_number=1, platform_player_id="9001"))
+    session.add(DraftQueueEntry(draft_id=espn_draft.id, platform_player_id="9001", order=1))
+    session.commit()
+
+    picks = draft.list_picks(session, espn_draft.id)
+    queue = draft.list_queue(session, espn_draft.id)
+
+    assert [p["name"] for p in picks] == ["Test Player"]
+    assert [q["name"] for q in queue] == ["Test Player"]

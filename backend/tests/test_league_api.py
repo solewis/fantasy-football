@@ -21,7 +21,7 @@ def stub_sleeper(monkeypatch, meta=None, team_names=None):
 
 
 def create_league(client, **overrides):
-    payload = {"platform_league_id": "999", "format": "half_ppr"}
+    payload = {"platform": "sleeper", "platform_league_id": "999", "format": "half_ppr"}
     payload.update(overrides)
     response = client.post("/leagues", json=payload)
     assert response.status_code == 200
@@ -32,7 +32,9 @@ def test_get_league_lookup_returns_preview(api_client, monkeypatch):
     client, _session_factory = api_client
     stub_sleeper(monkeypatch)
 
-    response = client.get("/leagues/lookup", params={"platform_league_id": "999"})
+    response = client.get(
+        "/leagues/lookup", params={"platform": "sleeper", "platform_league_id": "999"}
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -48,7 +50,9 @@ def test_get_league_lookup_bad_id_is_400(api_client, monkeypatch):
 
     monkeypatch.setattr(sleeper_league, "fetch_raw_league", boom)
 
-    response = client.get("/leagues/lookup", params={"platform_league_id": "bad-id"})
+    response = client.get(
+        "/leagues/lookup", params={"platform": "sleeper", "platform_league_id": "bad-id"}
+    )
 
     assert response.status_code == 400
 
@@ -76,7 +80,10 @@ def test_post_league_bad_id_is_400(api_client, monkeypatch):
 
     monkeypatch.setattr(sleeper_league, "fetch_raw_league", boom)
 
-    response = client.post("/leagues", json={"platform_league_id": "bad-id", "format": "half_ppr"})
+    response = client.post(
+        "/leagues",
+        json={"platform": "sleeper", "platform_league_id": "bad-id", "format": "half_ppr"},
+    )
 
     assert response.status_code == 400
 

@@ -10,7 +10,7 @@ from app.league import (
     create_league,
     delete_league,
     list_leagues,
-    lookup_sleeper_league,
+    lookup_league,
     sync_league,
     update_format,
     update_rank_set,
@@ -44,6 +44,7 @@ class LeagueSummary(BaseModel):
 
 
 class CreateLeagueRequest(BaseModel):
+    platform: str
     platform_league_id: str
     format: str
     rank_set_id: int | None = None
@@ -73,24 +74,26 @@ def _to_summary(league: League) -> LeagueSummary:
 
 
 @router.get("/leagues/lookup", response_model=LookupLeagueResponse)
-def get_league_lookup(platform_league_id: str, db: DbSession) -> LookupLeagueResponse:
+def get_league_lookup(
+    platform: str, platform_league_id: str, db: DbSession
+) -> LookupLeagueResponse:
     try:
-        meta = lookup_sleeper_league(platform_league_id)
+        meta = lookup_league(platform, platform_league_id)
     except LeagueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return LookupLeagueResponse(**meta)
 
 
 @router.get("/leagues", response_model=list[LeagueSummary])
-def get_leagues(db: DbSession) -> list[LeagueSummary]:
-    return [_to_summary(league_row) for league_row in list_leagues(db)]
+def get_leagues(db: DbSession, platform: str | None = None) -> list[LeagueSummary]:
+    return [_to_summary(league_row) for league_row in list_leagues(db, platform)]
 
 
 @router.post("/leagues", response_model=LeagueSummary)
 def post_league(payload: CreateLeagueRequest, db: DbSession) -> LeagueSummary:
     try:
         league_row = create_league(
-            db, payload.platform_league_id, payload.format, payload.rank_set_id
+            db, payload.platform, payload.platform_league_id, payload.format, payload.rank_set_id
         )
     except LeagueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

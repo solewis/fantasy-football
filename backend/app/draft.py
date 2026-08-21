@@ -4,7 +4,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.draft_logic import pick_to_round_and_slot, total_picks
-from app.ingest import sleeper_draft, sleeper_league
+from app.ingest import platforms, sleeper_draft, sleeper_league
 from app.models import Draft, DraftPick, DraftQueueEntry, League, PlatformPlayer
 
 PLATFORM = "sleeper"
@@ -201,12 +201,19 @@ def list_picks(session: Session, draft_id: int) -> list[dict]:
     if draft is None:
         return []
 
+    # A league-linked draft's picks resolve against that league's own
+    # platform's players (an ESPN/Yahoo draft has ESPN/Yahoo player ids).
+    # Manual/ad-hoc drafts have no real platform of their own -- they've
+    # always drawn from Sleeper's player pool, the only one that existed
+    # when ad-hoc drafting was built, and ad-hoc drafting stays Sleeper-only.
+    player_platform = draft.platform if draft.platform != "manual" else "sleeper"
+
     query = (
         session.query(DraftPick, PlatformPlayer)
         .join(
             PlatformPlayer,
             and_(
-                PlatformPlayer.platform == PLATFORM,
+                PlatformPlayer.platform == player_platform,
                 PlatformPlayer.platform_player_id == DraftPick.platform_player_id,
             ),
         )
@@ -235,8 +242,11 @@ def make_pick(session: Session, draft_id: int, platform_player_id: str) -> dict:
     draft = get_draft(session, draft_id)
     if draft is None:
         raise DraftError("Draft not found")
-    if draft.platform == PLATFORM:
-        raise DraftError("This draft is synced live from Sleeper; picks can't be entered manually")
+    if draft.platform != "manual":
+        platform_name = platforms.DISPLAY_NAMES.get(draft.platform, draft.platform)
+        raise DraftError(
+            f"This draft is synced live from {platform_name}; picks can't be entered manually"
+        )
 
     existing_count = session.query(DraftPick).filter_by(draft_id=draft_id).count()
     if existing_count >= total_picks(draft.num_teams, draft.num_rounds):
@@ -266,8 +276,11 @@ def make_pick(session: Session, draft_id: int, platform_player_id: str) -> dict:
 
 def undo_last_pick(session: Session, draft_id: int) -> dict | None:
     draft = get_draft(session, draft_id)
-    if draft is not None and draft.platform == PLATFORM:
-        raise DraftError("This draft is synced live from Sleeper; picks can't be undone manually")
+    if draft is not None and draft.platform != "manual":
+        platform_name = platforms.DISPLAY_NAMES.get(draft.platform, draft.platform)
+        raise DraftError(
+            f"This draft is synced live from {platform_name}; picks can't be undone manually"
+        )
 
     last = (
         session.query(DraftPick)
@@ -372,12 +385,19 @@ def list_drafts(session: Session, league_id: int | None = None) -> list[dict]:
 
 
 def list_queue(session: Session, draft_id: int) -> list[dict]:
+    draft = get_draft(session, draft_id)
+    if draft is None:
+        return []
+
+    # Same platform resolution as list_picks -- see its comment.
+    player_platform = draft.platform if draft.platform != "manual" else "sleeper"
+
     query = (
         session.query(DraftQueueEntry, PlatformPlayer)
         .join(
             PlatformPlayer,
             and_(
-                PlatformPlayer.platform == PLATFORM,
+                PlatformPlayer.platform == player_platform,
                 PlatformPlayer.platform_player_id == DraftQueueEntry.platform_player_id,
             ),
         )

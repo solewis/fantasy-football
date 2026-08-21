@@ -1,7 +1,7 @@
-import ssl
-
 import httpx
-import truststore
+
+from app.ingest.errors import PlatformFetchError
+from app.ingest.http import new_client
 
 LEAGUE_URL_TEMPLATE = "https://api.sleeper.app/v1/league/{league_id}"
 ROSTERS_URL_TEMPLATE = "https://api.sleeper.app/v1/league/{league_id}/rosters"
@@ -15,19 +15,13 @@ USERS_URL_TEMPLATE = "https://api.sleeper.app/v1/league/{league_id}/users"
 SCORING_REC_TO_FORMAT = {0.0: "std", 0.5: "half_ppr", 1.0: "ppr"}
 
 
-class SleeperFetchError(Exception):
+class SleeperFetchError(PlatformFetchError):
     """A Sleeper league/rosters/users lookup failed or returned something unusable."""
-
-
-def _new_client() -> httpx.Client:
-    # See app/ingest/sleeper.py::_new_client for why this isn't httpx's default verify.
-    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    return httpx.Client(timeout=30, verify=ctx)
 
 
 def _get_json(url: str, client: httpx.Client | None, not_found_msg: str) -> object:
     owns_client = client is None
-    client = client or _new_client()
+    client = client or new_client()
     try:
         try:
             response = client.get(url)
@@ -120,3 +114,18 @@ def parse_team_names(raw_rosters: list[dict], raw_users: list[dict]) -> dict[str
         owner_id = roster.get("owner_id")
         team_names[str(roster_id)] = name_by_user_id.get(owner_id, f"Team {roster_id}")
     return team_names
+
+
+def fetch_and_parse_league(platform_league_id: str) -> tuple[dict, dict[str, str]]:
+    """The uniform per-platform entry point app/league.py dispatches through --
+    fetch everything needed to create/sync a local League and return
+    (meta, team_names). Sleeper needs three separate calls (league, rosters,
+    users) to build this; other platforms may need only one, but this
+    function is the seam that hides that difference from the service layer.
+    """
+    raw_league = fetch_raw_league(platform_league_id)
+    meta = parse_league_meta(raw_league)
+    raw_rosters = fetch_raw_rosters(platform_league_id)
+    raw_users = fetch_raw_users(platform_league_id)
+    team_names = parse_team_names(raw_rosters, raw_users)
+    return meta, team_names

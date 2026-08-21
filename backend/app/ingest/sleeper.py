@@ -1,28 +1,16 @@
-import ssl
-
 import httpx
-import truststore
 from sqlalchemy.orm import Session
 
+from app.ingest.http import new_client
 from app.models import PlatformPlayer
 
 SLEEPER_PLAYERS_URL = "https://api.sleeper.app/v1/players/nfl"
 PLATFORM = "sleeper"
 
 
-def _new_client() -> httpx.Client:
-    # httpx defaults to its bundled certifi CA store, which can lag behind
-    # newer intermediate CAs (and won't include a corporate TLS-inspection
-    # root either). truststore delegates verification to the OS's native
-    # trust store instead, same as curl, so it stays correct without pinning
-    # a static CA bundle file.
-    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    return httpx.Client(timeout=30, verify=ctx)
-
-
 def fetch_raw_players(client: httpx.Client | None = None) -> dict:
     owns_client = client is None
-    client = client or _new_client()
+    client = client or new_client()
     try:
         response = client.get(SLEEPER_PLAYERS_URL)
         response.raise_for_status()

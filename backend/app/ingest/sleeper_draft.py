@@ -1,25 +1,19 @@
-import ssl
-
 import httpx
-import truststore
+
+from app.ingest.errors import PlatformFetchError
+from app.ingest.http import new_client
 
 DRAFT_URL_TEMPLATE = "https://api.sleeper.app/v1/draft/{draft_id}"
 DRAFT_PICKS_URL_TEMPLATE = "https://api.sleeper.app/v1/draft/{draft_id}/picks"
 
 
-class SleeperFetchError(Exception):
+class SleeperFetchError(PlatformFetchError):
     """A Sleeper draft/picks lookup failed or returned something unusable."""
-
-
-def _new_client() -> httpx.Client:
-    # See app/ingest/sleeper.py::_new_client for why this isn't httpx's default verify.
-    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    return httpx.Client(timeout=30, verify=ctx)
 
 
 def fetch_raw_draft(draft_id: str, client: httpx.Client | None = None) -> dict:
     owns_client = client is None
-    client = client or _new_client()
+    client = client or new_client()
     try:
         try:
             response = client.get(DRAFT_URL_TEMPLATE.format(draft_id=draft_id))
@@ -42,7 +36,7 @@ def fetch_raw_draft(draft_id: str, client: httpx.Client | None = None) -> dict:
 
 def fetch_raw_picks(draft_id: str, client: httpx.Client | None = None) -> list[dict]:
     owns_client = client is None
-    client = client or _new_client()
+    client = client or new_client()
     try:
         try:
             response = client.get(DRAFT_PICKS_URL_TEMPLATE.format(draft_id=draft_id))

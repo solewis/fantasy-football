@@ -4,3 +4,4 @@ httpx
 sqlalchemy
 truststore
 rapidfuzz
+python-dotenv

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.draft import (
     create_draft,
     create_draft_from_league,
     create_sleeper_draft,
+    delete_draft,
     get_status,
     list_drafts,
     list_queue,
@@ -181,6 +182,15 @@ def get_draft_status(draft_id: int, db: DbSession) -> DraftStatus:
     if status is None:
         raise HTTPException(status_code=404, detail="Draft not found")
     return DraftStatus(**status)
+
+
+@router.delete("/{draft_id}", status_code=204)
+def delete_draft_route(draft_id: int, db: DbSession) -> Response:
+    try:
+        delete_draft(db, draft_id)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(status_code=204)
 
 
 @router.post("/{draft_id}/picks", response_model=MakePickResponse)

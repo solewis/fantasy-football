@@ -194,6 +194,23 @@ def get_draft(session: Session, draft_id: int) -> Draft | None:
     return session.get(Draft, draft_id)
 
 
+def delete_draft(session: Session, draft_id: int) -> None:
+    """Deletes a single draft (and its picks/queue) without touching its
+    League, if any -- unlike delete_league's cascade (which deletes a
+    league's draft as a side effect of removing the league itself), this is
+    the standalone path: e.g. "Start over" replacing a draft with a fresh
+    one for the same league.
+    """
+    draft = get_draft(session, draft_id)
+    if draft is None:
+        raise DraftError("Draft not found")
+
+    session.query(DraftPick).filter_by(draft_id=draft_id).delete()
+    session.query(DraftQueueEntry).filter_by(draft_id=draft_id).delete()
+    session.delete(draft)
+    session.commit()
+
+
 def list_picks(session: Session, draft_id: int) -> list[dict]:
     draft = get_draft(session, draft_id)
     if draft is None:

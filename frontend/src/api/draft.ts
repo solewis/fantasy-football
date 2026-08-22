@@ -156,6 +156,15 @@ export async function fetchDraftStatus(draftId: number): Promise<DraftStatus> {
   return parseOrThrow(response, 'Fetching draft')
 }
 
+export async function deleteDraft(draftId: number): Promise<void> {
+  const response = await fetch(`${API_BASE}/drafts/${draftId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    throw new Error(`Deleting draft failed: ${response.status}`)
+  }
+}
+
 export async function syncDraft(draftId: number): Promise<DraftStatus> {
   const response = await fetch(`${API_BASE}/drafts/${draftId}/sync`, {
     method: 'POST',

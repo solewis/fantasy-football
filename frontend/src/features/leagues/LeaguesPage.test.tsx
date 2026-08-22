@@ -291,6 +291,7 @@ describe('LeaguesPage', () => {
   it('shows a draft-in-progress badge for a league with an active draft', () => {
     const draft: DraftSummary = {
       id: 5,
+      pick_count: 3,
       next_pick_number: 4,
       current_round: 2,
       is_complete: false,
@@ -308,6 +309,27 @@ describe('LeaguesPage', () => {
     expect(
       screen.getByText('Draft in progress · Round 2, Pick 4'),
     ).toBeInTheDocument()
+  })
+
+  it('shows a "Ready to draft" badge for a league with a draft but no picks yet', () => {
+    const draft: DraftSummary = {
+      id: 5,
+      pick_count: 0,
+      next_pick_number: 1,
+      current_round: 1,
+      is_complete: false,
+    }
+    render(
+      <LeaguesPage
+        leagues={[sampleLeague]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map([[sampleLeague.id, draft]])}
+        {...noop}
+      />,
+    )
+
+    expect(screen.getByText('Ready to draft')).toBeInTheDocument()
   })
 
   it('clicking the ad-hoc footer link calls onStartAdHoc', () => {

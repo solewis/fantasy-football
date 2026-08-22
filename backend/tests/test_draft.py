@@ -211,6 +211,29 @@ def test_get_status_for_unknown_draft_returns_none():
     assert draft.get_status(session, 999) is None
 
 
+def test_delete_draft_removes_it_and_its_picks_and_queue():
+    session = make_session()
+    seed_players(session)
+    created = draft.create_draft(
+        session, season="2026", format="half_ppr", num_teams=2, num_rounds=2, my_slot=1
+    )
+    draft.make_pick(session, created.id, "1")
+    draft.replace_queue(session, created.id, ["2"])
+
+    draft.delete_draft(session, created.id)
+
+    assert draft.get_draft(session, created.id) is None
+    assert session.query(DraftPick).filter_by(draft_id=created.id).count() == 0
+    assert session.query(DraftQueueEntry).filter_by(draft_id=created.id).count() == 0
+
+
+def test_delete_draft_raises_when_not_found():
+    session = make_session()
+
+    with pytest.raises(draft.DraftError):
+        draft.delete_draft(session, 999)
+
+
 def test_list_queue_empty_by_default():
     session = make_session()
     seed_players(session)

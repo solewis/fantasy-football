@@ -238,7 +238,9 @@ export function LeaguesPage({
                     <span className="league-card-draft-badge">
                       {draft.is_complete
                         ? 'Draft complete'
-                        : `Draft in progress · Round ${draft.current_round}, Pick ${draft.next_pick_number}`}
+                        : draft.pick_count > 0
+                          ? `Draft in progress · Round ${draft.current_round}, Pick ${draft.next_pick_number}`
+                          : 'Ready to draft'}
                     </span>
                   )}
                 </button>

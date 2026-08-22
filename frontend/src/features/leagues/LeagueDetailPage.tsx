@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { createDraftFromLeague } from '../../api/draft'
+import { createDraftFromLeague, deleteDraft } from '../../api/draft'
 import {
   deleteLeague,
   syncLeague,
@@ -52,6 +52,14 @@ export function LeagueDetailPage({
     setCreatingDraft(true)
     setDraftError(null)
     try {
+      // "Start over" reuses this same flow with an existing draft already in
+      // state -- delete it first so it doesn't linger as an orphaned
+      // duplicate once the new one is created (both would otherwise sit on
+      // the same league_id forever, with only the newest ever surfacing in
+      // the leagues list).
+      if (draft) {
+        await deleteDraft(draft.id)
+      }
       const status = await createDraftFromLeague({
         league_id: league.id,
         my_slot: mySlot,

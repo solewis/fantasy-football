@@ -53,7 +53,7 @@ def test_parse_draft_meta_extracts_season_teams_rounds():
         "season": "2026",
         "num_teams": 10,
         "num_rounds": 14,
-        "slot_to_roster_id": {"1": 10, "2": 3},
+        "slot_to_team_id": {"1": 10, "2": 3},
     }
 
 
@@ -62,12 +62,12 @@ def test_parse_draft_meta_raises_when_settings_missing():
         parse_draft_meta({"season": "2026", "settings": {}})
 
 
-def test_parse_draft_meta_defaults_slot_to_roster_id_to_empty_pre_draft():
+def test_parse_draft_meta_defaults_slot_to_team_id_to_empty_pre_draft():
     raw = {**RAW_DRAFT, "slot_to_roster_id": None}
 
     meta = parse_draft_meta(raw)
 
-    assert meta["slot_to_roster_id"] == {}
+    assert meta["slot_to_team_id"] == {}
 
 
 def test_parse_picks_normalizes_made_picks():

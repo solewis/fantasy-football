@@ -16,7 +16,7 @@ NotImplementedError holes within one platform rather than a clean "this
 platform doesn't support that" error at one place.
 """
 
-from app.ingest import espn_league, sleeper_draft, sleeper_league
+from app.ingest import espn_draft, espn_league, sleeper_draft, sleeper_league
 from app.ingest.errors import PlatformFetchError
 
 LEAGUE_INGEST = {
@@ -26,6 +26,7 @@ LEAGUE_INGEST = {
 
 DRAFT_INGEST = {
     "sleeper": sleeper_draft,
+    "espn": espn_draft,
 }
 
 # For user-facing strings ("synced live from X") -- title() mangles acronyms

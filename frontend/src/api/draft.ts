@@ -156,7 +156,7 @@ export async function fetchDraftStatus(draftId: number): Promise<DraftStatus> {
   return parseOrThrow(response, 'Fetching draft')
 }
 
-export async function syncSleeperDraft(draftId: number): Promise<DraftStatus> {
+export async function syncDraft(draftId: number): Promise<DraftStatus> {
   const response = await fetch(`${API_BASE}/drafts/${draftId}/sync`, {
     method: 'POST',
   })

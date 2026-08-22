@@ -185,12 +185,13 @@ class Draft(Base):
     num_teams: Mapped[int] = mapped_column(Integer)
     num_rounds: Mapped[int] = mapped_column(Integer)
     my_slot: Mapped[int] = mapped_column(Integer)
-    # {draft_slot (as a string): team name}, resolved from Sleeper's own
-    # slot_to_roster_id (per-draft, since snake-order slot assignment isn't known
-    # at the League level) joined against League.team_names (roster ownership).
-    # Null until that mapping is available (Sleeper only assigns it once the
-    # draft's order is set, which can be after league creation but before the
-    # draft starts) -- refreshed on each sync, not just at creation.
+    # {draft_slot (as a string): team name}, resolved from the platform's own
+    # slot_to_team_id (per-draft, since snake-order slot assignment isn't known
+    # at the League level) joined against League.team_names (roster/team
+    # ownership). Null until that mapping is available -- Sleeper only assigns
+    # it once the draft's order is set (which can be after league creation but
+    # before the draft starts); ESPN publishes it upfront -- refreshed on each
+    # sync either way, not just at creation.
     team_names: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 

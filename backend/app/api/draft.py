@@ -17,7 +17,7 @@ from app.draft import (
     make_pick,
     replace_queue,
     switch_to_manual,
-    sync_sleeper_draft,
+    sync_draft,
     undo_last_pick,
 )
 
@@ -160,7 +160,7 @@ def post_draft_from_league(payload: CreateDraftFromLeagueRequest, db: DbSession)
 @router.post("/{draft_id}/sync", response_model=DraftStatus)
 def post_sync(draft_id: int, db: DbSession) -> DraftStatus:
     try:
-        status = sync_sleeper_draft(db, draft_id)
+        status = sync_draft(db, draft_id)
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return DraftStatus(**status)

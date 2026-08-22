@@ -1,5 +1,6 @@
 import httpx
 
+from app.ingest import sleeper_league
 from app.ingest.errors import PlatformFetchError
 from app.ingest.http import new_client
 
@@ -9,6 +10,23 @@ DRAFT_PICKS_URL_TEMPLATE = "https://api.sleeper.app/v1/draft/{draft_id}/picks"
 
 class SleeperFetchError(PlatformFetchError):
     """A Sleeper draft/picks lookup failed or returned something unusable."""
+
+
+def resolve_platform_draft_id(platform_league_id: str) -> str:
+    """Sleeper's draft is a separate object with its own id, discoverable only
+    via the league's own draft_id field -- unlike ESPN, where the draft is
+    embedded in the league itself and needs no separate resolution (see
+    espn_draft.py's identity implementation of this same function).
+    """
+    try:
+        raw_league = sleeper_league.fetch_raw_league(platform_league_id)
+    except sleeper_league.SleeperFetchError as exc:
+        raise SleeperFetchError(str(exc)) from exc
+
+    platform_draft_id = raw_league.get("draft_id")
+    if not platform_draft_id:
+        raise SleeperFetchError("This league doesn't have an active draft yet")
+    return platform_draft_id
 
 
 def fetch_raw_draft(draft_id: str, client: httpx.Client | None = None) -> dict:
@@ -69,9 +87,10 @@ def parse_draft_meta(raw: dict) -> dict:
         "season": str(season),
         "num_teams": int(num_teams),
         "num_rounds": int(num_rounds),
-        # draft-slot (str) -> roster_id (int). Sleeper only assigns this once the
-        # draft's order is set -- can be {} pre-draft, that's not an error here.
-        "slot_to_roster_id": raw.get("slot_to_roster_id") or {},
+        # draft-slot (str) -> team id (int; Sleeper calls this a roster_id).
+        # Sleeper only assigns this once the draft's order is set -- can be {}
+        # pre-draft, that's not an error here.
+        "slot_to_team_id": raw.get("slot_to_roster_id") or {},
     }
 
 

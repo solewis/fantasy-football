@@ -4,24 +4,26 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.draft_logic import pick_to_round_and_slot, total_picks
-from app.ingest import platforms, sleeper_draft, sleeper_league
+from app.ingest import platforms, sleeper_draft
+from app.ingest.errors import PlatformFetchError
 from app.models import Draft, DraftPick, DraftQueueEntry, League, PlatformPlayer
 
 PLATFORM = "sleeper"
 
 
 def _team_names_by_slot(
-    slot_to_roster_id: dict[str, int], league_team_names: dict[str, str]
+    slot_to_team_id: dict[str, int], league_team_names: dict[str, str]
 ) -> dict[str, str]:
-    """Cross-reference a draft's own slot_to_roster_id (board-column -> roster)
-    against a League's team_names (roster -> name) -- draft-slot assignment
-    isn't known at the League level, only once a specific Sleeper draft has
-    randomized its order.
+    """Cross-reference a draft's own slot_to_team_id (board-column -> the
+    platform's own team/roster id) against a League's team_names (that same
+    id -> name) -- draft-slot assignment isn't known at the League level,
+    only once a specific platform draft has an order (Sleeper only assigns
+    this once randomized; ESPN publishes it upfront, see espn_draft.py).
     """
     return {
-        slot: league_team_names[str(roster_id)]
-        for slot, roster_id in slot_to_roster_id.items()
-        if str(roster_id) in league_team_names
+        slot: league_team_names[str(team_id)]
+        for slot, team_id in slot_to_team_id.items()
+        if str(team_id) in league_team_names
     }
 
 
@@ -81,11 +83,12 @@ def create_sleeper_draft(
 
 
 def create_draft_from_league(session: Session, league_id: int, my_slot: int) -> Draft:
-    """Create a draft from a saved League: looks up the league's current Sleeper
-    draft (its own `draft_id` field -- the draft the league is presently set up
-    for, not a full history of past-season drafts) rather than pasting a raw
-    draft ID, and inherits the league's format/roster shape instead of asking
-    for it again.
+    """Create a draft from a saved League: resolves whatever draft the
+    league's own platform considers "the" draft (a separate object with its
+    own id for Sleeper, discovered via the league's draft_id field; ESPN's
+    own league-embedded draft for ESPN -- see each ingest module's
+    resolve_platform_draft_id) rather than pasting a raw draft ID, and
+    inherits the league's format/roster shape instead of asking for it again.
     """
     league = session.get(League, league_id)
     if league is None:
@@ -93,23 +96,16 @@ def create_draft_from_league(session: Session, league_id: int, my_slot: int) -> 
     if not (1 <= my_slot <= league.num_teams):
         raise DraftError(f"Slot must be between 1 and {league.num_teams}")
 
+    module = platforms.draft_ingest(league.platform)
     try:
-        raw_league = sleeper_league.fetch_raw_league(league.platform_league_id)
-    except sleeper_league.SleeperFetchError as exc:
-        raise DraftError(str(exc)) from exc
-
-    platform_draft_id = raw_league.get("draft_id")
-    if not platform_draft_id:
-        raise DraftError("This league doesn't have an active draft yet")
-
-    try:
-        raw_draft = sleeper_draft.fetch_raw_draft(platform_draft_id)
-        meta = sleeper_draft.parse_draft_meta(raw_draft)
-    except sleeper_draft.SleeperFetchError as exc:
+        platform_draft_id = module.resolve_platform_draft_id(league.platform_league_id)
+        raw_draft = module.fetch_raw_draft(platform_draft_id)
+        meta = module.parse_draft_meta(raw_draft)
+    except PlatformFetchError as exc:
         raise DraftError(str(exc)) from exc
 
     draft = Draft(
-        platform=PLATFORM,
+        platform=league.platform,
         platform_draft_id=platform_draft_id,
         league_id=league.id,
         season=meta["season"],
@@ -117,7 +113,7 @@ def create_draft_from_league(session: Session, league_id: int, my_slot: int) -> 
         num_teams=meta["num_teams"],
         num_rounds=meta["num_rounds"],
         my_slot=my_slot,
-        team_names=_team_names_by_slot(meta["slot_to_roster_id"], league.team_names) or None,
+        team_names=_team_names_by_slot(meta["slot_to_team_id"], league.team_names) or None,
         created_at=datetime.now(UTC),
     )
     session.add(draft)
@@ -126,34 +122,36 @@ def create_draft_from_league(session: Session, league_id: int, my_slot: int) -> 
     return draft
 
 
-def sync_sleeper_draft(session: Session, draft_id: int) -> dict:
+def sync_draft(session: Session, draft_id: int) -> dict:
     draft = get_draft(session, draft_id)
     if draft is None:
         raise DraftError("Draft not found")
-    if draft.platform != PLATFORM or not draft.platform_draft_id:
-        raise DraftError("Draft is not linked to a Sleeper draft")
+    if draft.platform not in platforms.DRAFT_INGEST or not draft.platform_draft_id:
+        raise DraftError("Draft is not linked to a live platform draft")
 
+    module = platforms.draft_ingest(draft.platform)
     try:
-        raw_picks = sleeper_draft.fetch_raw_picks(draft.platform_draft_id)
-    except sleeper_draft.SleeperFetchError as exc:
+        raw_picks = module.fetch_raw_picks(draft.platform_draft_id)
+    except PlatformFetchError as exc:
         raise DraftError(str(exc)) from exc
 
-    # Sleeper only assigns slot_to_roster_id once the draft's order is set --
-    # that can happen after the draft was first created here, so re-check it
+    # Team-slot assignment can change after the draft was first created here
+    # (Sleeper only assigns slot_to_team_id once the draft's order is set; an
+    # ESPN commissioner can still reorder pickOrder pre-draft) -- re-check it
     # on every sync rather than only at creation time.
     if draft.league_id is not None:
         league = session.get(League, draft.league_id)
         if league is not None:
             try:
-                raw_draft = sleeper_draft.fetch_raw_draft(draft.platform_draft_id)
-                meta = sleeper_draft.parse_draft_meta(raw_draft)
-            except sleeper_draft.SleeperFetchError as exc:
+                raw_draft = module.fetch_raw_draft(draft.platform_draft_id)
+                meta = module.parse_draft_meta(raw_draft)
+            except PlatformFetchError as exc:
                 raise DraftError(str(exc)) from exc
             draft.team_names = (
-                _team_names_by_slot(meta["slot_to_roster_id"], league.team_names) or None
+                _team_names_by_slot(meta["slot_to_team_id"], league.team_names) or None
             )
 
-    parsed = sleeper_draft.parse_picks(raw_picks)
+    parsed = module.parse_picks(raw_picks)
     existing_numbers = {
         row.pick_number
         for row in session.query(DraftPick.pick_number).filter_by(draft_id=draft_id).all()

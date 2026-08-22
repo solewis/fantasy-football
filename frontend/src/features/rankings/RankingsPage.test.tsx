@@ -199,6 +199,31 @@ describe('RankingsPage', () => {
     expect(within(rows[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
   })
 
+  it('refetches with the selected platform when the platform tab changes', async () => {
+    const fetchMock = mockBackend({ initialSets: [] })
+
+    render(<RankingsPage />)
+    await screen.findByText("Ja'Marr Chase")
+
+    fireEvent.click(screen.getByRole('tab', { name: 'ESPN' }))
+
+    await waitFor(() => {
+      const rankSetsCalls = fetchMock.mock.calls
+        .map(([url]) => new URL(url as string))
+        .filter((u) => u.pathname === '/rank-sets')
+      expect(
+        rankSetsCalls.some((u) => u.searchParams.get('platform') === 'espn'),
+      ).toBe(true)
+    })
+    await waitFor(() => {
+      const lastPlayersCall = fetchMock.mock.calls
+        .map(([url]) => new URL(url as string))
+        .filter((u) => u.pathname === '/players')
+        .at(-1)
+      expect(lastPlayersCall?.searchParams.get('platform')).toBe('espn')
+    })
+  })
+
   it('uses a rank set’s saved order when it has entries, without the ADP fallback note', async () => {
     mockBackend({
       initialSets: [

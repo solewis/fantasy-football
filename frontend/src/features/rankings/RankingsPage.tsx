@@ -11,6 +11,10 @@ import {
   type RankRow,
   type RankSetSummary,
 } from '../../api/ranks'
+import {
+  PlatformTabs,
+  type SupportedPlatform,
+} from '../../components/PlatformTabs'
 import { FORMATS, SEASON } from '../../lib/formats'
 import { isBelowMidpoint, reorderList } from '../../lib/reorder'
 import { PositionTag } from '../players/PositionTag'
@@ -19,6 +23,7 @@ import './rankings.css'
 type Source = 'saved' | 'adp' | null
 
 export function RankingsPage() {
+  const [platform, setPlatform] = useState<SupportedPlatform>('sleeper')
   const [format, setFormat] = useState('half_ppr')
   const [rankSets, setRankSets] = useState<RankSetSummary[]>([])
   const [selectedSetId, setSelectedSetId] = useState<number | null>(null)
@@ -33,12 +38,12 @@ export function RankingsPage() {
   // effect -- these two keys only get written from a .then()/.finally()
   // callback (an async continuation, not the effect's synchronous body), so
   // there's nothing to reset up front and no risk of a cascading render.
-  const [rankSetsLoadedFormat, setRankSetsLoadedFormat] = useState<
-    string | null
-  >(null)
-  const rankSetsLoaded = rankSetsLoadedFormat === format
+  const [rankSetsLoadedKey, setRankSetsLoadedKey] = useState<string | null>(
+    null,
+  )
+  const rankSetsLoaded = rankSetsLoadedKey === `${platform}:${format}`
   const [ranksLoadedKey, setRanksLoadedKey] = useState<string | null>(null)
-  const currentRanksKey = `${selectedSetId ?? 'adp'}:${format}`
+  const currentRanksKey = `${selectedSetId ?? 'adp'}:${platform}:${format}`
   const loading = !rankSetsLoaded || ranksLoadedKey !== currentRanksKey
 
   const [creatingName, setCreatingName] = useState<string | null>(null)
@@ -56,6 +61,14 @@ export function RankingsPage() {
   const lastHoverKeyRef = useRef<string | null>(null)
 
   const selectedSet = rankSets.find((s) => s.id === selectedSetId) ?? null
+
+  function selectPlatform(next: SupportedPlatform) {
+    setSaveMessage(null)
+    setCreatingName(null)
+    setRenamingName(null)
+    setConfirmingDelete(false)
+    setPlatform(next)
+  }
 
   function selectFormat(next: string) {
     setSaveMessage(null)
@@ -75,7 +88,7 @@ export function RankingsPage() {
   useEffect(() => {
     let cancelled = false
 
-    fetchRankSets({ season: SEASON, format })
+    fetchRankSets({ platform, season: SEASON, format })
       .then((sets) => {
         if (cancelled) return
         setRankSets(sets)
@@ -92,24 +105,24 @@ export function RankingsPage() {
           )
       })
       .finally(() => {
-        if (!cancelled) setRankSetsLoadedFormat(format)
+        if (!cancelled) setRankSetsLoadedKey(`${platform}:${format}`)
       })
 
     return () => {
       cancelled = true
     }
-  }, [format])
+  }, [platform, format])
 
   // Effect B: the actual rank content for whichever set is selected (or an
   // ADP preview if none is). Waits for Effect A to finish at least once.
   useEffect(() => {
     if (!rankSetsLoaded) return
     let cancelled = false
-    const key = `${selectedSetId ?? 'adp'}:${format}`
+    const key = `${selectedSetId ?? 'adp'}:${platform}:${format}`
 
     async function load() {
       if (selectedSetId === null) {
-        const rows = await fetchPlayers({ season: SEASON, format })
+        const rows = await fetchPlayers({ platform, season: SEASON, format })
         if (cancelled) return
         setWorkingList(rows)
         setSource('adp')
@@ -123,7 +136,7 @@ export function RankingsPage() {
         setSource('saved')
         return
       }
-      const adpRows = await fetchPlayers({ season: SEASON, format })
+      const adpRows = await fetchPlayers({ platform, season: SEASON, format })
       if (cancelled) return
       setWorkingList(adpRows)
       setSource('adp')
@@ -143,18 +156,18 @@ export function RankingsPage() {
     return () => {
       cancelled = true
     }
-    // format is included so switching between two formats that both have
-    // zero rank sets (selectedSetId staying null both times) still refetches
-    // the ADP preview for the new format, instead of leaving the old one on
-    // screen.
-  }, [selectedSetId, format, rankSetsLoaded])
+    // platform/format are included so switching between two platforms or
+    // formats that both have zero rank sets (selectedSetId staying null both
+    // times) still refetches the ADP preview for the new scope, instead of
+    // leaving the old one on screen.
+  }, [selectedSetId, platform, format, rankSetsLoaded])
 
   async function handleLoadFromAdp() {
     setAdpLoading(true)
     setError(null)
     setSaveMessage(null)
     try {
-      const rows = await fetchPlayers({ season: SEASON, format })
+      const rows = await fetchPlayers({ platform, season: SEASON, format })
       setWorkingList(rows)
       setSource('adp')
     } catch (err) {
@@ -175,7 +188,7 @@ export function RankingsPage() {
       )
       setSaveMessage(`Saved ${result.count} ranks`)
       setSource('saved')
-      const sets = await fetchRankSets({ season: SEASON, format })
+      const sets = await fetchRankSets({ platform, season: SEASON, format })
       setRankSets(sets)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save ranks')
@@ -200,6 +213,7 @@ export function RankingsPage() {
         name: creatingName,
         season: SEASON,
         format,
+        platform,
         seed_from_adp: true,
       })
       setRankSets((prev) => [...prev, created])
@@ -309,6 +323,7 @@ export function RankingsPage() {
   return (
     <div className="rankings-page">
       <div className="rankings-toolbar">
+        <PlatformTabs value={platform} onChange={selectPlatform} />
         <select
           className="rankings-format"
           value={format}

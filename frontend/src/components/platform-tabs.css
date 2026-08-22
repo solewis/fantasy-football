@@ -1,0 +1,21 @@
+.platform-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.platform-tab {
+  font: inherit;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.platform-tab.active {
+  background: var(--text-primary);
+  color: var(--surface-page);
+  border-color: var(--text-primary);
+}

@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react'
 
 import { fetchPlayers, type PlayerRow } from '../../api/players'
 import {
+  PlatformTabs,
+  type SupportedPlatform,
+} from '../../components/PlatformTabs'
+import {
   FORMATS,
   POSITIONS,
   SEASON,
@@ -12,17 +16,24 @@ import { SyncPanel } from './SyncPanel'
 import './players.css'
 
 export function PlayersPage() {
+  const [platform, setPlatform] = useState<SupportedPlatform>('sleeper')
   const [position, setPosition] = useState<PositionFilter>('ALL')
   const [format, setFormat] = useState<string>('half_ppr')
   const [search, setSearch] = useState('')
 
-  // Fetched once per format -- position/search are filtered client-side below,
-  // since the backend already returns the full unpaginated set for a format
-  // and re-hitting the network on every keystroke/tab click has no benefit.
+  // Fetched once per platform/format -- position/search are filtered
+  // client-side below, since the backend already returns the full
+  // unpaginated set for a platform/format and re-hitting the network on
+  // every keystroke/tab click has no benefit.
   const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshNonce, setRefreshNonce] = useState(0)
+
+  function selectPlatform(next: SupportedPlatform) {
+    setLoading(true)
+    setPlatform(next)
+  }
 
   function selectFormat(next: string) {
     setLoading(true)
@@ -32,7 +43,7 @@ export function PlayersPage() {
   useEffect(() => {
     let cancelled = false
 
-    fetchPlayers({ season: SEASON, format })
+    fetchPlayers({ platform, season: SEASON, format })
       .then((rows) => {
         if (cancelled) return
         setAllPlayers(rows)
@@ -49,7 +60,7 @@ export function PlayersPage() {
     return () => {
       cancelled = true
     }
-  }, [format, refreshNonce])
+  }, [platform, format, refreshNonce])
 
   const searchTerm = search.trim().toLowerCase()
   const players = allPlayers.filter((row) => {
@@ -66,6 +77,7 @@ export function PlayersPage() {
       />
 
       <div className="players-toolbar">
+        <PlatformTabs value={platform} onChange={selectPlatform} />
         <input
           className="players-search"
           type="text"

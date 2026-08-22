@@ -147,4 +147,21 @@ describe('PlayersPage', () => {
     expect(lastPlayersCall).not.toContain('position=')
     expect(lastPlayersCall).not.toContain('search=')
   })
+
+  it('refetches with the selected platform when the platform tab changes', async () => {
+    const fetchMock = mockFetch({ ok: true, body: samplePlayers })
+    render(<PlayersPage />)
+    await screen.findByText("Ja'Marr Chase")
+
+    fireEvent.click(screen.getByRole('tab', { name: 'ESPN' }))
+
+    await waitFor(() => {
+      expect(playersCallCount(fetchMock)).toBe(2)
+    })
+    const lastPlayersCall = fetchMock.mock.calls
+      .map(([url]) => url as string)
+      .filter((url) => !url.includes('/sync/'))
+      .at(-1)
+    expect(lastPlayersCall).toContain('platform=espn')
+  })
 })

@@ -73,6 +73,7 @@ export function PlayersPage() {
     <div className="players-page">
       <SyncPanel
         season={SEASON}
+        platform={platform}
         onSyncComplete={() => setRefreshNonce((n) => n + 1)}
       />
 

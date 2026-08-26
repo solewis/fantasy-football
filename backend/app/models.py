@@ -6,8 +6,10 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -107,8 +109,12 @@ class RankSet(Base):
     """
 
     __tablename__ = "rank_sets"
+    # Named on purpose, not just for readability: SQLite can't drop a constraint
+    # in place, so changing this one goes through Alembic's batch mode, which
+    # reflects the existing table -- and reflection can't recover the name of an
+    # anonymous constraint.
     __table_args__ = (
-        UniqueConstraint("platform", "season", "format", "name", name="uq_rank_set_name"),
+        UniqueConstraint("platform", "season", "format", "scope", "name", name="uq_rank_set_name"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -116,6 +122,13 @@ class RankSet(Base):
     platform: Mapped[str] = mapped_column(String, index=True, default="sleeper")
     season: Mapped[str] = mapped_column(String, index=True)
     format: Mapped[str] = mapped_column(String, index=True)
+    # "overall" or one of QB/RB/WR/TE. A plain String rather than an Enum: this
+    # codebase has no Enum precedent, and on SQLite an Enum becomes a CHECK
+    # constraint that batch-migrating later is needlessly painful. Validated in
+    # app/ranks.py instead. Only an "overall" set may be assigned to a League.
+    scope: Mapped[str] = mapped_column(
+        String, index=True, server_default="overall", default="overall"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
@@ -134,6 +147,102 @@ class RankEntry(Base):
     rank_set_id: Mapped[int] = mapped_column(ForeignKey("rank_sets.id"), index=True)
     platform_player_id: Mapped[str] = mapped_column(String, index=True)
     rank: Mapped[int] = mapped_column(Integer)
+    # Tier this player falls in, or None when the set has no tiers. A grouping
+    # over the existing order, never a second ordering -- rank stays dense and
+    # contiguous either way.
+    tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class RankDataset(Base):
+    """One imported third-party ranking file (someone else's ranks), stored
+    platform-agnostically.
+
+    Deliberately has no platform column. Rows are keyed by normalized name and
+    resolved to a platform's player ids on read (app/rank_sources.py), so a
+    single upload serves both a Sleeper and an ESPN league -- which is exactly
+    what NameMapping's (platform, source_type, normalized_name) key was already
+    built for. season/format are here because a ranking file is inherently for
+    one season and one scoring format.
+    """
+
+    __tablename__ = "rank_datasets"
+    __table_args__ = (UniqueConstraint("season", "format", "name", name="uq_rank_dataset_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    season: Mapped[str] = mapped_column(String, index=True)
+    format: Mapped[str] = mapped_column(String, index=True)
+    # Which axes this file can actually feed, computed once at import so the
+    # builder can say "this file can't feed an overall build" without loading a
+    # single row. A positional-only file genuinely cannot produce an overall
+    # rank -- see app/rank_import/derive.py.
+    has_overall: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_positional: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_tier: Mapped[bool] = mapped_column(Boolean, default=False)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    # The confirmed column mapping, kept alongside the original text so a
+    # mis-mapped import can be re-parsed without re-uploading the file. Opaque,
+    # never joined on -- JSON, same call as League.roster_positions.
+    column_mapping: Mapped[dict] = mapped_column(JSON)
+    raw_text: Mapped[str] = mapped_column(Text)
+    imported_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class RankDatasetEntry(Base):
+    """One row of an imported ranking file, after parsing and rank derivation.
+
+    Keyed by normalized_name rather than a platform player id -- resolution
+    happens on read. position/team are normalized to this app's own vocabulary
+    (DEF not D/ST, JAX not JAC) at parse time, so app/matching never has to know
+    about third-party spellings.
+    """
+
+    __tablename__ = "rank_dataset_entries"
+    __table_args__ = (
+        # Catches the common duplicate (a file listing a player twice at the
+        # same position). It deliberately does NOT cover rows with a null
+        # position, since SQL treats nulls as distinct -- the importer dedupes
+        # those in Python and warns rather than sentinel-encoding null here.
+        UniqueConstraint("dataset_id", "normalized_name", "position", name="uq_rank_dataset_entry"),
+        Index("ix_rank_dataset_entry_dataset_position", "dataset_id", "position"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("rank_datasets.id"), index=True)
+    source_name_raw: Mapped[str] = mapped_column(String)
+    normalized_name: Mapped[str] = mapped_column(String, index=True)
+    position: Mapped[str | None] = mapped_column(String, nullable=True)
+    team: Mapped[str | None] = mapped_column(String, nullable=True)
+    overall_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    position_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # True when position_rank was computed from overall_rank rather than read
+    # from the file. Equivalent for comparison math, but not for showing the
+    # user what their source actually said.
+    position_rank_derived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Original file order: an audit trail, and the tiebreaker when a source
+    # ties two players at the same rank.
+    row_index: Mapped[int] = mapped_column(Integer)
+
+
+class RankSetSource(Base):
+    """Which rank sources a RankSet was built from, so reopening the builder
+    restores the selection.
+
+    `ref` is a tagged reference ("adp", "dataset:7", "rank_set:3") rather than a
+    nullable FK per kind: the set of source kinds is open, and a column per kind
+    would need a schema change every time one is added -- the same reasoning
+    that makes NameMapping.source_type free text.
+    """
+
+    __tablename__ = "rank_set_sources"
+    __table_args__ = (UniqueConstraint("rank_set_id", "ref", name="uq_rank_set_source"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rank_set_id: Mapped[int] = mapped_column(ForeignKey("rank_sets.id"), index=True)
+    ref: Mapped[str] = mapped_column(String)
+    order: Mapped[int] = mapped_column(Integer)
 
 
 class League(Base):

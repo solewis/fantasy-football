@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.ingest import platforms
 from app.ingest.errors import PlatformFetchError
 from app.models import Draft, DraftPick, DraftQueueEntry, League, RankSet
+from app.ranks import OVERALL
 
 
 class LeagueError(ValueError):
@@ -125,6 +126,10 @@ def update_rank_set(session: Session, league_id: int, rank_set_id: int | None) -
             raise LeagueError(
                 f"Can't assign a {rank_set.platform} rank set to a {league.platform} league"
             )
+        # A league drafts every position, so it needs a whole-board list. A
+        # positional set is an ingredient for building one, not a substitute.
+        if rank_set.scope != OVERALL:
+            raise LeagueError(f"A league needs an overall rank set, not a {rank_set.scope} list")
 
     league.rank_set_id = rank_set_id
     session.commit()

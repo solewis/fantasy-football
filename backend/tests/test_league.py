@@ -135,12 +135,13 @@ def test_update_format(monkeypatch):
     assert updated.format == "ppr"
 
 
-def make_rank_set(session, platform: str = "sleeper") -> RankSet:
+def make_rank_set(session, platform: str = "sleeper", scope: str = "overall") -> RankSet:
     rank_set = RankSet(
-        name="Main",
+        name=f"Main {scope}",
         platform=platform,
         season="2026",
         format="half_ppr",
+        scope=scope,
         created_at=datetime.now(UTC),
     )
     session.add(rank_set)
@@ -240,3 +241,27 @@ def test_list_leagues_ordered_by_creation(monkeypatch):
     rows = league.list_leagues(session)
 
     assert [row.id for row in rows] == [first.id, second.id]
+
+
+def test_update_rank_set_rejects_a_positional_set(monkeypatch):
+    """A league drafts every position, so it needs a whole-board list. A
+    positional set is an ingredient for building one, not a substitute.
+    """
+    session = make_session()
+    stub_sleeper(monkeypatch)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr", rank_set_id=None)
+    wr_set = make_rank_set(session, scope="WR")
+
+    with pytest.raises(league.LeagueError):
+        league.update_rank_set(session, created.id, wr_set.id)
+
+
+def test_update_rank_set_accepts_an_overall_set(monkeypatch):
+    session = make_session()
+    stub_sleeper(monkeypatch)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr", rank_set_id=None)
+    overall = make_rank_set(session, scope="overall")
+
+    updated = league.update_rank_set(session, created.id, overall.id)
+
+    assert updated.rank_set_id == overall.id

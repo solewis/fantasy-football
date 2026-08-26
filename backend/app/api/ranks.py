@@ -1,11 +1,13 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.ranks import (
+    OVERALL,
+    RankEntryInput,
     RankSetError,
     create_rank_set,
     delete_rank_set,
@@ -30,6 +32,7 @@ class RankSetSummary(BaseModel):
     platform: str
     season: str
     format: str
+    scope: str
     player_count: int
 
 
@@ -38,6 +41,7 @@ class CreateRankSetRequest(BaseModel):
     season: str = DEFAULT_SEASON
     format: str = DEFAULT_FORMAT
     platform: str = "sleeper"
+    scope: str = OVERALL
     seed_from_adp: bool = True
 
 
@@ -52,10 +56,41 @@ class RankRow(BaseModel):
     position: str | None
     team: str | None
     adp: float | None
+    tier: int | None
+
+
+class ReplaceRankEntry(BaseModel):
+    platform_player_id: str
+    tier: int | None = None
 
 
 class ReplaceRanksRequest(BaseModel):
-    platform_player_ids: list[str]
+    """Accepts either shape for one release.
+
+    `entries` is the real one -- it carries tiers. `platform_player_ids` is the
+    original tier-less shape the frontend still posts; it stays accepted until
+    the frontend switches over, then goes away in its own commit. Exactly one
+    must be supplied, so a caller sending both (or neither) gets a 422 rather
+    than having one silently ignored.
+    """
+
+    entries: list[ReplaceRankEntry] | None = None
+    platform_player_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def exactly_one_shape(self) -> "ReplaceRanksRequest":
+        if (self.entries is None) == (self.platform_player_ids is None):
+            raise ValueError("Supply exactly one of 'entries' or 'platform_player_ids'")
+        return self
+
+    def to_entries(self) -> list[RankEntryInput]:
+        if self.entries is not None:
+            return [
+                RankEntryInput(platform_player_id=e.platform_player_id, tier=e.tier)
+                for e in self.entries
+            ]
+        assert self.platform_player_ids is not None
+        return [RankEntryInput(platform_player_id=pid) for pid in self.platform_player_ids]
 
 
 class ReplaceRanksResponse(BaseModel):
@@ -68,8 +103,9 @@ def get_rank_sets(
     platform: str = "sleeper",
     season: str | None = None,
     format: str | None = None,
+    scope: str | None = None,
 ) -> list[RankSetSummary]:
-    rows = list_rank_sets(db, platform, season, format)
+    rows = list_rank_sets(db, platform, season, format, scope)
     return [RankSetSummary(**row) for row in rows]
 
 
@@ -82,6 +118,7 @@ def post_rank_set(payload: CreateRankSetRequest, db: DbSession) -> RankSetSummar
             payload.season,
             payload.format,
             platform=payload.platform,
+            scope=payload.scope,
             seed_from_adp=payload.seed_from_adp,
         )
     except RankSetError as exc:
@@ -123,7 +160,7 @@ def get_rank_set_ranks(rank_set_id: int, db: DbSession) -> list[RankRow]:
 def put_rank_set_ranks(
     rank_set_id: int, payload: ReplaceRanksRequest, db: DbSession
 ) -> ReplaceRanksResponse:
-    count = replace_ranks(db, rank_set_id, payload.platform_player_ids)
+    count = replace_ranks(db, rank_set_id, payload.to_entries())
     return ReplaceRanksResponse(count=count)
 
 

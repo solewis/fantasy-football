@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, func
@@ -8,9 +9,28 @@ from app.players import list_players
 
 PLATFORM = "sleeper"
 
+OVERALL = "overall"
+# Positions that get their own buildable list. Deliberately narrower than
+# lib/formats.ts's POSITIONS: ranking kickers and defenses carefully isn't worth
+# the effort, and a FLEX list would overlap the individual ones -- that's what
+# the overall list already is.
+BUILD_POSITIONS = ("QB", "RB", "WR", "TE")
+SCOPES = (OVERALL, *BUILD_POSITIONS)
+
 
 class RankSetError(ValueError):
     """A rank-set action that can't be satisfied (duplicate name, unknown set, ...)."""
+
+
+@dataclass(frozen=True)
+class RankEntryInput:
+    """One row of a saved order. Carries the tier alongside the player so a
+    save is a single full replace, matching how the editor actually works --
+    it always has one complete, current order in hand.
+    """
+
+    platform_player_id: str
+    tier: int | None = None
 
 
 def list_rank_sets(
@@ -18,6 +38,7 @@ def list_rank_sets(
     platform: str = PLATFORM,
     season: str | None = None,
     format: str | None = None,
+    scope: str | None = None,
 ) -> list[dict]:
     """Rank sets matching the given scope, with a live player count for each
     (a label like "Half PPR Main (312)" is more useful than a bare name).
@@ -31,6 +52,8 @@ def list_rank_sets(
         query = query.filter(RankSet.season == season)
     if format is not None:
         query = query.filter(RankSet.format == format)
+    if scope is not None:
+        query = query.filter(RankSet.scope == scope)
 
     query = query.group_by(RankSet.id).order_by(RankSet.id.asc())
 
@@ -41,6 +64,7 @@ def list_rank_sets(
             "platform": rank_set.platform,
             "season": rank_set.season,
             "format": rank_set.format,
+            "scope": rank_set.scope,
             "player_count": count,
         }
         for rank_set, count in query.all()
@@ -57,15 +81,18 @@ def create_rank_set(
     season: str,
     format: str,
     platform: str = PLATFORM,
+    scope: str = OVERALL,
     seed_from_adp: bool = True,
 ) -> RankSet:
     name = name.strip()
     if not name:
         raise RankSetError("Rank set name can't be blank")
+    if scope not in SCOPES:
+        raise RankSetError(f"Unknown rank set scope {scope!r}")
 
     existing = (
         session.query(RankSet)
-        .filter_by(platform=platform, season=season, format=format, name=name)
+        .filter_by(platform=platform, season=season, format=format, scope=scope, name=name)
         .one_or_none()
     )
     if existing:
@@ -76,6 +103,7 @@ def create_rank_set(
         platform=platform,
         season=season,
         format=format,
+        scope=scope,
         created_at=datetime.now(UTC),
     )
     session.add(rank_set)
@@ -83,8 +111,15 @@ def create_rank_set(
     session.refresh(rank_set)
 
     if seed_from_adp:
-        seed_rows = list_players(session, platform, season, format)
-        replace_ranks(session, rank_set.id, [row["platform_player_id"] for row in seed_rows])
+        # A positional set seeds with just that position -- seeding a WR list
+        # with every player would make the first job deleting 700 rows.
+        position = None if scope == OVERALL else scope
+        seed_rows = list_players(session, platform, season, format, position=position)
+        replace_ranks(
+            session,
+            rank_set.id,
+            [RankEntryInput(platform_player_id=row["platform_player_id"]) for row in seed_rows],
+        )
 
     return rank_set
 
@@ -101,7 +136,11 @@ def rename_rank_set(session: Session, rank_set_id: int, name: str) -> RankSet:
     existing = (
         session.query(RankSet)
         .filter_by(
-            platform=rank_set.platform, season=rank_set.season, format=rank_set.format, name=name
+            platform=rank_set.platform,
+            season=rank_set.season,
+            format=rank_set.format,
+            scope=rank_set.scope,
+            name=name,
         )
         .filter(RankSet.id != rank_set_id)
         .one_or_none()
@@ -165,27 +204,33 @@ def list_ranks(session: Session, rank_set_id: int) -> list[dict]:
             "position": player.position,
             "team": player.team,
             "adp": adp,
+            "tier": entry.tier,
         }
         for entry, player, adp in query.all()
     ]
 
 
-def replace_ranks(session: Session, rank_set_id: int, platform_player_ids: list[str]) -> int:
+def replace_ranks(session: Session, rank_set_id: int, entries: list[RankEntryInput]) -> int:
     """Replace a rank set's entire saved order with the given list (index 0 = rank 1).
     Always a full replace, not an incremental edit -- a drag-and-drop rank builder
     only ever has one current, complete order.
+
+    Tiers ride along on each entry rather than being saved separately: they're a
+    grouping over this exact order, so saving them apart from it would let the
+    two drift.
     """
     session.query(RankEntry).filter_by(rank_set_id=rank_set_id).delete()
-    for index, platform_player_id in enumerate(platform_player_ids):
+    for index, entry in enumerate(entries):
         session.add(
             RankEntry(
                 rank_set_id=rank_set_id,
-                platform_player_id=platform_player_id,
+                platform_player_id=entry.platform_player_id,
                 rank=index + 1,
+                tier=entry.tier,
             )
         )
     session.commit()
-    return len(platform_player_ids)
+    return len(entries)
 
 
 def resolve_rank_set(session: Session, platform: str, season: str, format: str) -> RankSet | None:
@@ -194,10 +239,15 @@ def resolve_rank_set(session: Session, platform: str, season: str, format: str) 
     format -- stable under later edits or new sets being created, unlike "most
     recently updated" would be. Deleted once a Draft carries a real rank_set_id
     via League (Phase C of the League-setup plan).
+
+    Restricted to overall sets on purpose. Without that filter a positional set
+    with a lower id would win here and the draft pool would quietly show only
+    receivers -- no error, just a wrong board, which is about the worst way for
+    this to fail.
     """
     return (
         session.query(RankSet)
-        .filter_by(platform=platform, season=season, format=format)
+        .filter_by(platform=platform, season=season, format=format, scope=OVERALL)
         .order_by(RankSet.id.asc())
         .first()
     )

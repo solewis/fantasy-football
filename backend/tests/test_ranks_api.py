@@ -1,4 +1,4 @@
-from app.models import PlatformPlayer
+from app.models import AdpEntry, PlatformPlayer
 
 
 def seed(session_factory) -> None:
@@ -18,6 +18,33 @@ def seed(session_factory) -> None:
                 name="Bijan Robinson",
                 position="RB",
                 team="ATL",
+            ),
+        ]
+    )
+    session.commit()
+    session.close()
+
+
+def seed_adp(session_factory) -> None:
+    """The shared seed() above deliberately has no ADP rows, and seeding a rank
+    set inner-joins ADP -- so any test using seed_from_adp needs these too.
+    """
+    session = session_factory()
+    session.add_all(
+        [
+            AdpEntry(
+                platform="sleeper",
+                platform_player_id="1",
+                season="2026",
+                format="half_ppr",
+                adp=15.0,
+            ),
+            AdpEntry(
+                platform="sleeper",
+                platform_player_id="2",
+                season="2026",
+                format="half_ppr",
+                adp=2.0,
             ),
         ]
     )
@@ -137,3 +164,112 @@ def test_get_ranks_resolver_reflects_the_first_created_sets_order(api_client):
 
     body = response.json()
     assert [row["name"] for row in body] == ["Bijan Robinson", "Josh Allen"]
+
+
+def test_post_rank_set_with_positional_scope(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    seed_adp(session_factory)
+
+    body = create_rank_set(client, name="My RBs", scope="RB", seed_from_adp=True)
+
+    assert body["scope"] == "RB"
+    rows = client.get(f"/rank-sets/{body['id']}/ranks").json()
+    assert [r["position"] for r in rows] == ["RB"]
+
+
+def test_post_rank_set_rejects_unknown_scope(api_client):
+    client, _session_factory = api_client
+
+    response = client.post(
+        "/rank-sets", json={"name": "Kickers", "scope": "K", "seed_from_adp": False}
+    )
+
+    assert response.status_code == 400
+
+
+def test_get_rank_sets_filters_by_scope(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    create_rank_set(client, name="Main", seed_from_adp=False)
+    create_rank_set(client, name="My RBs", scope="RB", seed_from_adp=False)
+
+    rows = client.get("/rank-sets?platform=sleeper&scope=RB").json()
+
+    assert [r["name"] for r in rows] == ["My RBs"]
+
+
+def test_put_ranks_accepts_the_entries_shape_with_tiers(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    rank_set_id = create_rank_set(client, seed_from_adp=False)["id"]
+
+    response = client.put(
+        f"/rank-sets/{rank_set_id}/ranks",
+        json={
+            "entries": [
+                {"platform_player_id": "2", "tier": 1},
+                {"platform_player_id": "1", "tier": 2},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"count": 2}
+    rows = client.get(f"/rank-sets/{rank_set_id}/ranks").json()
+    assert [(r["platform_player_id"], r["tier"]) for r in rows] == [("2", 1), ("1", 2)]
+
+
+def test_put_ranks_still_accepts_the_legacy_id_list_shape(api_client):
+    """The frontend posts this shape until it switches over -- see
+    ReplaceRanksRequest's docstring.
+    """
+    client, session_factory = api_client
+    seed(session_factory)
+    rank_set_id = create_rank_set(client, seed_from_adp=False)["id"]
+
+    response = client.put(
+        f"/rank-sets/{rank_set_id}/ranks", json={"platform_player_ids": ["1", "2"]}
+    )
+
+    assert response.status_code == 200
+    rows = client.get(f"/rank-sets/{rank_set_id}/ranks").json()
+    assert [r["platform_player_id"] for r in rows] == ["1", "2"]
+    assert [r["tier"] for r in rows] == [None, None]
+
+
+def test_put_ranks_rejects_both_shapes_at_once(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    rank_set_id = create_rank_set(client, seed_from_adp=False)["id"]
+
+    response = client.put(
+        f"/rank-sets/{rank_set_id}/ranks",
+        json={"platform_player_ids": ["1"], "entries": [{"platform_player_id": "2"}]},
+    )
+
+    assert response.status_code == 422
+
+
+def test_put_ranks_rejects_neither_shape(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    rank_set_id = create_rank_set(client, seed_from_adp=False)["id"]
+
+    assert client.put(f"/rank-sets/{rank_set_id}/ranks", json={}).status_code == 422
+
+
+def test_get_ranks_ignores_a_positional_set_with_a_lower_id(api_client):
+    """The draft player pool reads GET /ranks -- a positional set winning the
+    resolver would silently give it a board of one position.
+    """
+    client, session_factory = api_client
+    seed(session_factory)
+    seed_adp(session_factory)
+    create_rank_set(client, name="My RBs", scope="RB", seed_from_adp=True)
+    overall = create_rank_set(client, name="Main", seed_from_adp=True)
+
+    rows = client.get("/ranks?platform=sleeper&season=2026&format=half_ppr").json()
+
+    assert len(rows) == len(client.get(f"/rank-sets/{overall['id']}/ranks").json())
+    assert {r["position"] for r in rows} == {"QB", "RB"}

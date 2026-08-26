@@ -9,7 +9,7 @@ Usage: python -m scripts.sync_espn_players [--league-id ID]  (run from backend/)
 
 import argparse
 
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.sync_service import sync_espn_players
 
 
@@ -18,7 +18,6 @@ def main() -> None:
     parser.add_argument("--league-id", type=int, default=None)
     args = parser.parse_args()
 
-    Base.metadata.create_all(engine)
     with SessionLocal() as session:
         result = sync_espn_players(session, args.league_id)
     print(

@@ -6,11 +6,12 @@ from app.api.league import router as league_router
 from app.api.players import router as players_router
 from app.api.ranks import router as ranks_router
 from app.api.sync import router as sync_router
-from app.db import Base, engine
 
-# Idempotent: creates any tables that don't exist yet, leaves existing ones
-# alone. Runs once per server process (including each --reload restart).
-Base.metadata.create_all(engine)
+# NOTE: the schema is owned by Alembic (backend/alembic/), not by
+# create_all(). Importing this module used to call Base.metadata.create_all(),
+# which would happily create tables behind Alembic's back -- a later
+# `alembic upgrade head` then finds them already present and its CREATE TABLE
+# fails. Run `alembic upgrade head` to build or migrate the database.
 
 app = FastAPI(title="Fantasy Draft Assistant")
 

@@ -18,6 +18,7 @@ const samplePlayers: PlayerRow[] = [
     position: 'WR',
     team: 'CIN',
     adp: 1.0,
+    tier: null,
   },
   {
     rank: 2,
@@ -26,12 +27,13 @@ const samplePlayers: PlayerRow[] = [
     position: 'RB',
     team: 'ATL',
     adp: 2.0,
+    tier: null,
   },
 ]
 
 const emptySyncStatus = {
   players: { last_synced_at: null, record_count: 0 },
-  adp: { season: '2026', last_synced_at: null, record_count: 0 },
+  adp: { season: '2026', tier: null, last_synced_at: null, record_count: 0 },
   espn_players: { last_synced_at: null, record_count: 0 },
 }
 

@@ -13,6 +13,7 @@ const adpPlayers: PlayerRow[] = [
     position: 'WR',
     team: 'CIN',
     adp: 1.0,
+    tier: null,
   },
   {
     rank: 2,
@@ -21,6 +22,7 @@ const adpPlayers: PlayerRow[] = [
     position: 'RB',
     team: 'ATL',
     adp: 2.0,
+    tier: null,
   },
 ]
 
@@ -32,6 +34,7 @@ const savedRanks: RankRow[] = [
     position: 'RB',
     team: 'ATL',
     adp: 2.0,
+    tier: null,
   },
   {
     rank: 2,
@@ -40,6 +43,7 @@ const savedRanks: RankRow[] = [
     position: 'WR',
     team: 'CIN',
     adp: 1.0,
+    tier: null,
   },
 ]
 

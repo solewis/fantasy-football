@@ -12,3 +12,12 @@ export const FORMATS = [
 
 export const POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF'] as const
 export type PositionFilter = (typeof POSITIONS)[number]
+
+/** Positions that get their own buildable rank list.
+ *
+ * Deliberately not POSITIONS above, which carries ALL/K/DEF -- those would
+ * leak into the Build view's position picker, and neither kickers nor defenses
+ * are worth ranking carefully.
+ */
+export const BUILD_POSITIONS = ['QB', 'RB', 'WR', 'TE'] as const
+export type BuildPosition = (typeof BUILD_POSITIONS)[number]

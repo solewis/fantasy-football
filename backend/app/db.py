@@ -1,5 +1,6 @@
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -28,3 +29,17 @@ def get_db() -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+def as_utc(value: datetime | None) -> datetime | None:
+    """Reattach UTC tzinfo to a naive datetime read back from the DB.
+
+    SQLite has no timezone-aware column type, so a value stored as tz-aware UTC
+    comes back naive. Everything this app writes is UTC by construction
+    (`datetime.now(UTC)`), so reattaching is always correct -- and necessary,
+    since an offset-less timestamp is silently parsed as *local* time by JS's
+    Date, which shows a just-created row as hours in the future.
+    """
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)

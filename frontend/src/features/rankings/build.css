@@ -1,0 +1,313 @@
+.build-page {
+  padding: 16px 20px 20px;
+  max-width: 1240px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.build-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.build-scope-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--surface-2, #1e1e1c);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.build-scope-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #c3c2b7);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.build-scope-tab.active {
+  background: var(--surface-3, #33322f);
+  color: var(--text-primary, #fff);
+}
+
+.build-grid {
+  display: grid;
+  grid-template-columns: 200px minmax(240px, 320px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .build-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.build-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.build-panel {
+  border: 1px solid var(--border, #33322f);
+  border-radius: 8px;
+  background: var(--surface-1, #1a1a19);
+  overflow: hidden;
+}
+
+/* Marks the "this is your own list" panel apart from the consensus one. */
+.build-panel.is-mine {
+  border-left: 3px solid var(--text-secondary, #c3c2b7);
+}
+
+.build-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #33322f);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #898781);
+  font-weight: 600;
+}
+
+.build-source-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+}
+
+.build-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.build-source.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.build-source-tag,
+.build-source-note {
+  font-size: 11px;
+  color: var(--text-muted, #898781);
+}
+
+.build-working-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 8px 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.build-working-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: grab;
+  font-size: 13px;
+}
+
+.build-working-row:hover {
+  background: var(--surface-2, #1e1e1c);
+}
+
+.build-working-row.dragging {
+  opacity: 0.4;
+}
+
+.build-slot {
+  min-width: 40px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #898781);
+  font-size: 12px;
+}
+
+.build-row-action {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #898781);
+  cursor: pointer;
+  padding: 2px 4px;
+  opacity: 0;
+}
+
+.build-working-row:hover .build-row-action,
+.build-row-action:focus-visible {
+  opacity: 1;
+}
+
+.build-row-action:last-child {
+  margin-left: auto;
+}
+
+/* A hairline affordance that only appears on hover, so the list stays quiet. */
+.build-insert-here {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #898781);
+  font-size: 11px;
+  text-align: left;
+  padding: 0 6px;
+  height: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+li:hover > .build-insert-here,
+.build-insert-here:focus-visible,
+.build-insert-here.active {
+  height: 16px;
+}
+
+.build-insert-here.active {
+  color: var(--text-primary, #fff);
+}
+
+.build-insert-escape {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #c3c2b7);
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.build-tier-break {
+  border-top: 2px dashed var(--border, #33322f);
+  margin: 4px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #898781);
+  padding-top: 2px;
+}
+
+.build-end-zone {
+  padding: 8px;
+  margin-top: 4px;
+  border: 1px dashed var(--border, #33322f);
+  border-radius: 6px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted, #898781);
+}
+
+/* Wide content scrolls inside its own container rather than the page body. */
+.build-table-wrapper {
+  overflow-x: auto;
+}
+
+.build-candidates {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.build-candidates th,
+.build-candidates td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border, #33322f);
+  white-space: nowrap;
+}
+
+.build-candidates th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #898781);
+  font-weight: 600;
+}
+
+.build-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.build-team {
+  color: var(--text-muted, #898781);
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.build-contested {
+  margin-left: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border, #33322f);
+  border-radius: 4px;
+  padding: 1px 4px;
+  color: var(--text-muted, #898781);
+}
+
+.build-pick {
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.build-nextup {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 8px;
+}
+
+.build-nextup-head {
+  margin-bottom: 4px;
+}
+
+.build-nextup-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.build-nextup-row:hover {
+  background: var(--surface-2, #1e1e1c);
+}
+
+.build-nextup-rank,
+.build-nextup-tier,
+.build-nextup-empty {
+  font-size: 11px;
+  color: var(--text-muted, #898781);
+  font-variant-numeric: tabular-nums;
+}
+
+.build-nextup-tier {
+  margin-left: auto;
+}

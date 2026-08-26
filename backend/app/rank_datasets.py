@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.db import as_utc
 from app.matching.mappings import confirm_mapping, get_mappings
 from app.matching.pipeline import resolve_rows
 from app.models import NameMapping, PlatformPlayer, RankDataset, RankDatasetEntry, RankSetSource
@@ -169,7 +170,7 @@ def _summary(dataset: RankDataset) -> dict:
         "has_tier": dataset.has_tier,
         "row_count": dataset.row_count,
         "source_filename": dataset.source_filename,
-        "imported_at": dataset.imported_at,
+        "imported_at": as_utc(dataset.imported_at),
     }
 
 

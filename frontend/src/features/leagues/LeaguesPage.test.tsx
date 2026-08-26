@@ -86,6 +86,7 @@ function mockBackend({
         platform: (body?.platform as string) ?? 'sleeper',
         season: body?.season as string,
         format: body?.format as string,
+        scope: 'overall',
         player_count: body?.seed_from_adp ? 250 : 0,
       }
       rankSets = [...rankSets, created]

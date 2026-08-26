@@ -224,3 +224,14 @@ def test_rank_pool_with_a_bad_source_ref_is_400(api_client):
     response = client.get("/rank-pool?source_ref=nonsense")
 
     assert response.status_code == 400
+
+
+def test_imported_at_carries_utc_so_it_is_not_read_as_local_time(api_client):
+    """SQLite drops tzinfo, and JS's Date parses an offset-less timestamp as
+    local -- which showed a just-imported dataset as "in 6 hours".
+    """
+    client, session_factory = api_client
+    seed(session_factory)
+    created = import_dataset(client)
+
+    assert created["imported_at"].endswith("Z") or "+00:00" in created["imported_at"]

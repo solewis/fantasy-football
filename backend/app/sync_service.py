@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app.db import as_utc
 from app.ingest import espn_players, sleeper, sleeper_adp
 from app.league import list_leagues
 from app.models import AdpEntry, PlatformPlayer, SyncStatus
@@ -19,21 +20,6 @@ ESPN_PLAYERS_SYNC_TYPE = "espn_players"
 
 class SyncError(ValueError):
     """A sync couldn't proceed (e.g. no ESPN league saved to sync through)."""
-
-
-def _as_utc(value: datetime | None) -> datetime | None:
-    """Reattach UTC tzinfo to a naive datetime.
-
-    SQLite drops tzinfo on the round-trip through the DB (it has no native
-    timezone-aware column type), so a value we stored as tz-aware UTC comes
-    back naive. Every datetime this module writes is UTC by construction
-    (`datetime.now(UTC)`), so it's always correct to reattach it here rather
-    than leave the API to serialize an ambiguous, offset-less timestamp that
-    JS's `Date` parser would otherwise silently misread as local time.
-    """
-    if value is None or value.tzinfo is not None:
-        return value
-    return value.replace(tzinfo=UTC)
 
 
 def _record_sync(session: Session, sync_type: str, season: str | None) -> datetime:
@@ -105,16 +91,16 @@ def get_status(session: Session, season: str) -> dict:
 
     return {
         "players": {
-            "last_synced_at": _as_utc(players_status.last_synced_at if players_status else None),
+            "last_synced_at": as_utc(players_status.last_synced_at if players_status else None),
             "record_count": players_count,
         },
         "adp": {
             "season": season,
-            "last_synced_at": _as_utc(adp_status.last_synced_at if adp_status else None),
+            "last_synced_at": as_utc(adp_status.last_synced_at if adp_status else None),
             "record_count": adp_count,
         },
         "espn_players": {
-            "last_synced_at": _as_utc(
+            "last_synced_at": as_utc(
                 espn_players_status.last_synced_at if espn_players_status else None
             ),
             "record_count": espn_players_count,

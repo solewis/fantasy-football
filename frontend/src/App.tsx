@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { LeaguesSection } from './features/leagues/LeaguesSection'
 import { PlayersPage } from './features/players/PlayersPage'
-import { RankingsPage } from './features/rankings/RankingsPage'
+import { RankingsSection } from './features/rankings/RankingsSection'
 
 // Draft is no longer its own tab -- it now lives inside a specific league
 // (LeaguesSection drills into LeagueDetailPage, which has its own Draft
@@ -35,7 +35,7 @@ function App() {
       </header>
       <main>
         {activeTab === 'Players' && <PlayersPage />}
-        {activeTab === 'Rankings' && <RankingsPage />}
+        {activeTab === 'Rankings' && <RankingsSection />}
         {activeTab === 'Leagues' && <LeaguesSection />}
       </main>
     </div>

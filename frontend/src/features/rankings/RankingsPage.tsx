@@ -11,20 +11,27 @@ import {
   type RankRow,
   type RankSetSummary,
 } from '../../api/ranks'
-import {
-  PlatformTabs,
-  type SupportedPlatform,
-} from '../../components/PlatformTabs'
+import type { SupportedPlatform } from '../../components/PlatformTabs'
 import { FORMATS, SEASON } from '../../lib/formats'
-import { isBelowMidpoint, reorderList } from '../../lib/reorder'
-import { PositionTag } from '../players/PositionTag'
+import { reorderList } from '../../lib/reorder'
+import { RankingsTable } from './RankingsTable'
 import './rankings.css'
 
 type Source = 'saved' | 'adp' | null
 
-export function RankingsPage() {
-  const [platform, setPlatform] = useState<SupportedPlatform>('sleeper')
-  const [format, setFormat] = useState('half_ppr')
+interface RankingsPageProps {
+  platform: SupportedPlatform
+  format: string
+}
+
+/** The Edit view: the drag-and-drop rank table.
+ *
+ * platform/format are props rather than state because all three Rankings
+ * sub-views share them -- picking ESPN in Sources and then switching to Edit
+ * should stay on ESPN. Everything below that (which set is open, the working
+ * list, drag state) is local, since it means nothing to the other views.
+ */
+export function RankingsPage({ platform, format }: RankingsPageProps) {
   const [rankSets, setRankSets] = useState<RankSetSummary[]>([])
   const [selectedSetId, setSelectedSetId] = useState<number | null>(null)
   const [workingList, setWorkingList] = useState<RankRow[]>([])
@@ -61,22 +68,6 @@ export function RankingsPage() {
   const lastHoverKeyRef = useRef<string | null>(null)
 
   const selectedSet = rankSets.find((s) => s.id === selectedSetId) ?? null
-
-  function selectPlatform(next: SupportedPlatform) {
-    setSaveMessage(null)
-    setCreatingName(null)
-    setRenamingName(null)
-    setConfirmingDelete(false)
-    setPlatform(next)
-  }
-
-  function selectFormat(next: string) {
-    setSaveMessage(null)
-    setCreatingName(null)
-    setRenamingName(null)
-    setConfirmingDelete(false)
-    setFormat(next)
-  }
 
   // Effect A: the list of rank sets for this format. Never touches
   // workingList -- that's Effect B's job, keyed on selectedSetId, so the two
@@ -184,7 +175,10 @@ export function RankingsPage() {
     try {
       const result = await saveRanksForSet(
         selectedSetId,
-        workingList.map((row) => row.platform_player_id),
+        workingList.map((row) => ({
+          platform_player_id: row.platform_player_id,
+          tier: row.tier,
+        })),
       )
       setSaveMessage(`Saved ${result.count} ranks`)
       setSource('saved')
@@ -323,20 +317,6 @@ export function RankingsPage() {
   return (
     <div className="rankings-page">
       <div className="rankings-toolbar">
-        <PlatformTabs value={platform} onChange={selectPlatform} />
-        <select
-          className="rankings-format"
-          value={format}
-          onChange={(e) => selectFormat(e.target.value)}
-          aria-label="Scoring format"
-        >
-          {FORMATS.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-
         {rankSets.length > 0 && (
           <select
             className="rankings-format"
@@ -346,7 +326,8 @@ export function RankingsPage() {
           >
             {rankSets.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name} ({s.player_count})
+                {s.scope === 'overall' ? s.name : `${s.name} · ${s.scope}`} (
+                {s.player_count})
               </option>
             ))}
           </select>
@@ -456,81 +437,15 @@ export function RankingsPage() {
             No players available for this format.
           </p>
         ) : (
-          <table className="rankings-table">
-            <thead>
-              <tr>
-                <th>Rk</th>
-                <th>ADP</th>
-                <th>Name</th>
-                <th>Team</th>
-                <th>Move</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workingList.map((row, index) => (
-                <tr
-                  key={row.platform_player_id}
-                  draggable
-                  className={
-                    draggedId === row.platform_player_id ? 'dragging' : ''
-                  }
-                  onDragStart={() => startDrag(row.platform_player_id)}
-                  onDragEnd={endDrag}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    const insertAfter = isBelowMidpoint(e.clientY, rect)
-                    handleDragOver(row.platform_player_id, insertAfter)
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    endDrag()
-                  }}
-                >
-                  <td>{index + 1}</td>
-                  <td>{row.adp !== null ? row.adp.toFixed(1) : '—'}</td>
-                  <td>
-                    <PositionTag position={row.position} />
-                    <span className="player-name">{row.name}</span>
-                  </td>
-                  <td>{row.team ?? '—'}</td>
-                  <td className="rankings-move-cell">
-                    <button
-                      type="button"
-                      className="rankings-move-btn"
-                      onClick={() => moveUp(index)}
-                      disabled={index === 0}
-                      aria-label={`Move ${row.name} up`}
-                    >
-                      ▲
-                    </button>
-                    <button
-                      type="button"
-                      className="rankings-move-btn"
-                      onClick={() => moveDown(index)}
-                      disabled={index === workingList.length - 1}
-                      aria-label={`Move ${row.name} down`}
-                    >
-                      ▼
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              <tr
-                className="rankings-end-zone"
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  handleDragOver(null, false)
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  endDrag()
-                }}
-              >
-                <td colSpan={5}>Drop here to move to the end</td>
-              </tr>
-            </tbody>
-          </table>
+          <RankingsTable
+            rows={workingList}
+            draggedId={draggedId}
+            onDragStartRow={startDrag}
+            onDragEndRow={endDrag}
+            onDragOverRow={handleDragOver}
+            onMoveUp={moveUp}
+            onMoveDown={moveDown}
+          />
         )}
       </div>
     </div>

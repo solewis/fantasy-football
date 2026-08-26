@@ -3,6 +3,9 @@ import type { AvailableSource } from '../../api/rankPool'
 interface BuildSourcePickerProps {
   sources: AvailableSource[]
   selectedRefs: string[]
+  /** How many are actually feeding the table right now -- shown in the header
+   * so "no columns appeared" is never a mystery. */
+  eligibleCount: number
   scope: string
   onToggle: (ref: string) => void
 }
@@ -16,14 +19,23 @@ interface BuildSourcePickerProps {
 export function BuildSourcePicker({
   sources,
   selectedRefs,
+  eligibleCount,
   scope,
   onToggle,
 }: BuildSourcePickerProps) {
   const wantsOverall = scope === 'overall'
+  const usableCount = sources.filter((s) =>
+    wantsOverall ? s.supports_overall : s.supports_positional,
+  ).length
 
   return (
     <div className="build-panel build-sources">
-      <div className="build-panel-head">Sources</div>
+      <div className="build-panel-head">
+        Sources
+        <span className="build-source-count">
+          {eligibleCount} of {usableCount}
+        </span>
+      </div>
       <ul className="build-source-list">
         {sources.map((source) => {
           const usable = wantsOverall

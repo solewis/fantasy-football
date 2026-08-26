@@ -45,6 +45,10 @@ type Scope = 'overall' | BuildPosition
  */
 export function BuildPage({ platform, format }: BuildPageProps) {
   const [scope, setScope] = useState<Scope>('overall')
+  // Everything loaded is selected by default. You imported a ranking file in
+  // order to compare against it, and the previous default (ADP only) meant a
+  // freshly imported dataset sat unchecked in the rail while the table showed
+  // a single column -- which reads as "my import didn't work".
   const [selectedRefs, setSelectedRefs] = useState<string[]>(['adp'])
   const [available, setAvailable] = useState<AvailableSource[]>([])
   const [pool, setPool] = useState<RankPool | null>(null)
@@ -72,6 +76,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
         if (cancelled) return
         setAvailable(sources)
         setRankSets(sets)
+        setSelectedRefs(sources.map((s) => s.ref))
       })
       .catch((err: unknown) => {
         if (!cancelled)
@@ -283,6 +288,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
         <BuildSourcePicker
           sources={available}
           selectedRefs={selectedRefs}
+          eligibleCount={eligibleRefs.length}
           scope={scope}
           onToggle={(ref) =>
             setSelectedRefs((refs) =>

@@ -52,9 +52,15 @@ export function BuildCandidateTable({
                   <th>Avg</th>
                   <th>Range</th>
                   <th>Cov</th>
-                  <th>Tier</th>
+                  <th title="The tier this player sits in according to the sources that supply tiers">
+                    Tier
+                  </th>
                   {sources.map((source) => (
-                    <th key={source.ref} className="build-source-col">
+                    <th
+                      key={source.ref}
+                      className="build-source-col"
+                      title={source.label}
+                    >
                       {source.label}
                     </th>
                   ))}

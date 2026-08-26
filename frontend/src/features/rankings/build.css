@@ -311,3 +311,18 @@ li:hover > .build-insert-here,
 .build-nextup-tier {
   margin-left: auto;
 }
+
+.build-source-count {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dataset names can be long ("gretch-v429-20260826"); keep them from stretching
+   the table into a horizontal scroll. The full name is in the title. */
+.build-source-col {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

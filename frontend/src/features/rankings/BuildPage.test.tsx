@@ -107,10 +107,9 @@ beforeEach(() => {
 async function renderBuild() {
   mockBackend()
   render(<BuildPage platform="sleeper" format="half_ppr" />)
-  // ADP is selected by default; add the dataset so there are two opinions to
-  // compare, which is the case the view exists for.
   await screen.findByText("Ja'Marr Chase")
-  fireEvent.click(screen.getByRole('checkbox', { name: /FantasyPros/ }))
+  // Every usable source is selected on load, so both opinions are already in
+  // play without touching the picker.
   await waitFor(() => {
     expect(screen.getByText('1/2')).toBeInTheDocument()
   })
@@ -181,6 +180,16 @@ describe('BuildPage', () => {
     const checkbox = screen.getByRole('checkbox', { name: /WR only/ })
     expect(checkbox).toBeDisabled()
     expect(screen.getByText('no overall ranks')).toBeInTheDocument()
+  })
+
+  it('selects every usable source on load', async () => {
+    // A freshly imported dataset sitting unchecked reads as "my import didn't
+    // work" -- you loaded it in order to compare against it.
+    await renderBuild()
+
+    expect(screen.getByRole('checkbox', { name: /ADP/ })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /FantasyPros/ })).toBeChecked()
+    expect(screen.getByText('2 of 2')).toBeInTheDocument()
   })
 
   it('does not recommend anyone', async () => {

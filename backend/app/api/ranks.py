@@ -1,10 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.rank_import.refs import RankRefError
+from app.rank_sources import RankSourceError, build_rank_pool, list_available_sources
 from app.ranks import (
     OVERALL,
     RankEntryInput,
@@ -179,3 +181,38 @@ def get_ranks(
         return []
     rows = list_ranks(db, rank_set.id)
     return [RankRow(**row) for row in rows]
+
+
+@router.get("/rank-sources")
+def get_rank_sources(
+    db: DbSession,
+    platform: str = "sleeper",
+    season: str = DEFAULT_SEASON,
+    format: str = DEFAULT_FORMAT,
+) -> list[dict]:
+    """Everything selectable as a source in the builder: ADP, imported
+    datasets, and your own rank sets.
+    """
+    return list_available_sources(db, platform, season, format)
+
+
+@router.get("/rank-pool")
+def get_rank_pool(
+    db: DbSession,
+    source_ref: Annotated[list[str], Query()] = [],  # noqa: B006 -- FastAPI reads the default
+    platform: str = "sleeper",
+    season: str = DEFAULT_SEASON,
+    format: str = DEFAULT_FORMAT,
+    scope: str = OVERALL,
+) -> dict:
+    """Every player the selected sources rank, with what each source says.
+
+    Deliberately returns no averages, no ordering by merit and no suggested
+    pick -- the tool reports what the sources think and the human decides. It
+    also returns the *whole* pool in one response so the client can recompute
+    against a new slot on every pick without a round trip.
+    """
+    try:
+        return build_rank_pool(db, list(source_ref), platform, season, format, scope)
+    except (RankSourceError, RankRefError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.draft import router as draft_router
 from app.api.league import router as league_router
 from app.api.players import router as players_router
+from app.api.rank_datasets import router as rank_datasets_router
 from app.api.ranks import router as ranks_router
 from app.api.sync import router as sync_router
 
@@ -26,6 +27,7 @@ app.add_middleware(
 app.include_router(players_router)
 app.include_router(sync_router)
 app.include_router(ranks_router)
+app.include_router(rank_datasets_router)
 app.include_router(draft_router)
 app.include_router(league_router)
 

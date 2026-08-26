@@ -128,11 +128,14 @@ export async function importDataset(params: {
   return parseOrThrow(response, 'Importing dataset')
 }
 
+/** `platform` only affects the name-resolution counts on each row -- the
+ * datasets themselves are platform-neutral. */
 export async function fetchDatasets(
   season: string,
   format: string,
+  platform: string,
 ): Promise<DatasetSummary[]> {
-  const query = new URLSearchParams({ season, format })
+  const query = new URLSearchParams({ season, format, platform })
   const response = await fetch(`${API_BASE}/rank-datasets?${query.toString()}`)
   return parseOrThrow(response, 'Fetching datasets')
 }

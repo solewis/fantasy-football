@@ -1,10 +1,15 @@
 import { useState } from 'react'
 
 import type { DatasetSummary } from '../../api/rankDatasets'
+import { platformDisplayName } from '../../lib/platforms'
 import { formatRelativeTime } from '../../lib/relativeTime'
 
 interface SourceDatasetListProps {
   datasets: DatasetSummary[]
+  /** Only the name-matching column is platform-specific; the datasets
+   * themselves are platform-neutral. Named in the header so the platform
+   * control above doesn't look like it scopes the whole page. */
+  platform: string
   onReview: (datasetId: number) => void
   onDelete: (datasetId: number) => void
 }
@@ -22,6 +27,7 @@ function kindLabel(dataset: DatasetSummary): string {
 
 export function SourceDatasetList({
   datasets,
+  platform,
   onReview,
   onDelete,
 }: SourceDatasetListProps) {
@@ -43,7 +49,7 @@ export function SourceDatasetList({
           <th>Name</th>
           <th>Contains</th>
           <th>Rows</th>
-          <th>Names</th>
+          <th>Matched to {platformDisplayName(platform)}</th>
           <th>Imported</th>
           <th />
         </tr>

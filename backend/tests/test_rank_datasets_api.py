@@ -235,3 +235,38 @@ def test_imported_at_carries_utc_so_it_is_not_read_as_local_time(api_client):
     created = import_dataset(client)
 
     assert created["imported_at"].endswith("Z") or "+00:00" in created["imported_at"]
+
+
+def test_listing_reports_names_needing_review(api_client):
+    """Regression: the list endpoint returned no resolution counts at all, so
+    the UI's fallback showed every dataset as fully matched and the review
+    queue was unreachable.
+    """
+    client, session_factory = api_client
+    seed(session_factory)
+    import_dataset(
+        client,
+        name="Nicknames",
+        text="RK,PLAYER NAME,POS\n1,Ja'Marr Chase,WR\n2,Uncle Rico,WR\n",
+    )
+
+    listed = client.get("/rank-datasets?season=2026&format=half_ppr&platform=sleeper").json()
+
+    assert listed[0]["resolution"] == {"matched": 1, "needs_review": 1}
+
+
+def test_resolution_counts_are_per_platform(api_client):
+    """The dataset is platform-neutral, but a name resolved for Sleeper says
+    nothing about ESPN -- the two id spaces are unrelated.
+    """
+    client, session_factory = api_client
+    seed(session_factory)
+    import_dataset(client)
+
+    sleeper = client.get("/rank-datasets?platform=sleeper").json()[0]
+    espn = client.get("/rank-datasets?platform=espn").json()[0]
+
+    assert sleeper["resolution"]["matched"] == 3
+    # No ESPN players are seeded, so nothing can resolve there yet
+    assert espn["resolution"]["matched"] == 0
+    assert espn["resolution"]["needs_review"] == 3

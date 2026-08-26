@@ -109,8 +109,13 @@ def post_dataset(payload: CreateDatasetRequest, db: DbSession) -> dict:
 
 
 @router.get("/rank-datasets")
-def get_datasets(db: DbSession, season: str | None = None, format: str | None = None) -> list[dict]:
-    return list_datasets(db, season, format)
+def get_datasets(
+    db: DbSession,
+    season: str | None = None,
+    format: str | None = None,
+    platform: str | None = "sleeper",
+) -> list[dict]:
+    return list_datasets(db, season, format, platform)
 
 
 @router.get("/rank-datasets/{dataset_id}")

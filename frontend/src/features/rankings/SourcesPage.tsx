@@ -23,20 +23,20 @@ export function SourcesPage({ platform, format }: SourcesPageProps) {
   // Derived, not state set from inside the effect -- the key is only written
   // from an async continuation, so there's nothing to reset up front and no
   // cascading render.
-  const [loadedFormat, setLoadedFormat] = useState<string | null>(null)
-  const loading = loadedFormat !== format
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
+  const loading = loadedKey !== `${platform}:${format}`
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [reviewingId, setReviewingId] = useState<number | null>(null)
 
   const reload = useCallback(async () => {
-    const rows = await fetchDatasets(SEASON, format)
+    const rows = await fetchDatasets(SEASON, format, platform)
     setDatasets(rows)
-  }, [format])
+  }, [format, platform])
 
   useEffect(() => {
     let cancelled = false
-    fetchDatasets(SEASON, format)
+    fetchDatasets(SEASON, format, platform)
       .then((rows) => {
         if (!cancelled) setDatasets(rows)
       })
@@ -47,12 +47,12 @@ export function SourcesPage({ platform, format }: SourcesPageProps) {
           )
       })
       .finally(() => {
-        if (!cancelled) setLoadedFormat(format)
+        if (!cancelled) setLoadedKey(`${platform}:${format}`)
       })
     return () => {
       cancelled = true
     }
-  }, [format])
+  }, [format, platform])
 
   async function handleDelete(datasetId: number) {
     try {
@@ -64,15 +64,19 @@ export function SourcesPage({ platform, format }: SourcesPageProps) {
   }
 
   if (reviewingId !== null) {
+    // Kept inside the page wrapper -- returning the review screen bare made it
+    // escape the layout's padding and centering.
     return (
-      <SourceUnmatchedReview
-        datasetId={reviewingId}
-        platform={platform}
-        onDone={() => {
-          setReviewingId(null)
-          void reload()
-        }}
-      />
+      <div className="sources-page">
+        <SourceUnmatchedReview
+          datasetId={reviewingId}
+          platform={platform}
+          onDone={() => {
+            setReviewingId(null)
+            void reload()
+          }}
+        />
+      </div>
     )
   }
 
@@ -100,11 +104,21 @@ export function SourcesPage({ platform, format }: SourcesPageProps) {
       {loading ? (
         <p className="rankings-status">Loading…</p>
       ) : (
-        <SourceDatasetList
-          datasets={datasets}
-          onReview={setReviewingId}
-          onDelete={handleDelete}
-        />
+        <>
+          <p className="sources-note">
+            {`A ranking file is just names, so each one has to be matched to a
+            player on a specific platform — Sleeper and ESPN keep separate player
+            lists with no link between them. The files themselves aren't
+            platform-specific: one import serves both, you just confirm any
+            unrecognised names once per platform.`}
+          </p>
+          <SourceDatasetList
+            datasets={datasets}
+            platform={platform}
+            onReview={setReviewingId}
+            onDelete={handleDelete}
+          />
+        </>
       )}
     </div>
   )

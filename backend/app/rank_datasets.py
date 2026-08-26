@@ -175,14 +175,38 @@ def _summary(dataset: RankDataset) -> dict:
 
 
 def list_datasets(
-    session: Session, season: str | None = None, format: str | None = None
+    session: Session,
+    season: str | None = None,
+    format: str | None = None,
+    platform: str | None = None,
 ) -> list[dict]:
+    """Datasets in scope, with per-platform name-resolution counts when a
+    platform is given.
+
+    A dataset itself is platform-neutral -- it's stored by normalized name so
+    one upload serves every platform. Only the *resolution* is per-platform,
+    since a name has to land on one platform's player id, and Sleeper's and
+    ESPN's id spaces are unrelated. That's why the counts need a platform and
+    the rest of the row doesn't.
+    """
     query = session.query(RankDataset)
     if season is not None:
         query = query.filter(RankDataset.season == season)
     if format is not None:
         query = query.filter(RankDataset.format == format)
-    return [_summary(d) for d in query.order_by(RankDataset.id.asc()).all()]
+    datasets = query.order_by(RankDataset.id.asc()).all()
+
+    rows = []
+    for dataset in datasets:
+        summary = _summary(dataset)
+        if platform is not None:
+            # Runs the matcher, which is what makes the count trustworthy:
+            # counting rows with no stored mapping would report every
+            # auto-matchable name as needing review. Names already confirmed
+            # short-circuit on a batched lookup, so the repeat cost is small.
+            summary["resolution"] = auto_confirm_matches(session, dataset.id, platform)
+        rows.append(summary)
+    return rows
 
 
 def rename_dataset(session: Session, dataset_id: int, name: str) -> RankDataset:

@@ -51,9 +51,6 @@ export function BuildCandidateTable({
                   <th />
                   <th>Player</th>
                   <th>Avg</th>
-                  <th title="The tier this player sits in according to the sources that supply tiers">
-                    Tier
-                  </th>
                   {sources.map((source) => (
                     <th
                       key={source.ref}
@@ -94,9 +91,6 @@ export function BuildCandidateTable({
                     </td>
                     <td className="build-num">
                       {candidate.average?.toFixed(1) ?? '—'}
-                    </td>
-                    <td className="build-num">
-                      {candidate.source_tier ?? '—'}
                     </td>
                     {sources.map((source) => {
                       const rank = candidate.ranks[source.ref] ?? null

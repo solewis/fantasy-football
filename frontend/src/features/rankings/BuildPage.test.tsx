@@ -42,7 +42,6 @@ const PLAYERS = [
     team: 'CIN',
     adp: 3.2,
     ranks: { adp: 1, 'dataset:1': 1 },
-    source_tier: 1,
   },
   {
     platform_player_id: '2',
@@ -51,7 +50,6 @@ const PLAYERS = [
     team: 'LAR',
     adp: 4.7,
     ranks: { adp: 2, 'dataset:1': 3 },
-    source_tier: 2,
   },
   {
     platform_player_id: '3',
@@ -60,12 +58,11 @@ const PLAYERS = [
     team: 'MIN',
     adp: 13.9,
     ranks: { adp: 3, 'dataset:1': null },
-    source_tier: null,
   },
 ]
 
 function mockBackend() {
-  const fetchMock = vi.fn((url: string) => {
+  const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
     const { pathname } = new URL(url)
     if (pathname === '/rank-sources')
       return Promise.resolve(jsonResponse(SOURCES))

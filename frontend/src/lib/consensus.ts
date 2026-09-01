@@ -27,7 +27,6 @@ export interface CandidateSummary {
   coverage: number
   sourceCount: number
   ranks: Record<string, number | null>
-  source_tier: number | null
 }
 
 /** Above this, sources disagree enough to be worth flagging. */
@@ -81,7 +80,6 @@ export function summarizeCandidates(
       coverage: values.length,
       sourceCount: sourceRefs.length,
       ranks,
-      source_tier: player.source_tier,
     })
   }
 

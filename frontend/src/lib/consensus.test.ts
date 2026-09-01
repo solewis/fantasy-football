@@ -15,7 +15,6 @@ function player(
     team: 'CIN',
     adp: null,
     ranks,
-    source_tier: null,
   }
 }
 

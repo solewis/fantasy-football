@@ -317,15 +317,11 @@ def build_rank_pool(
     rows = []
     for player in players:
         ranks: dict[str, int | None] = {}
-        tiers: list[int] = []
         for source in sources:
             rank = source.ranks.get(player.platform_player_id)
-            if rank is None:
-                ranks[source.ref] = None
-                continue
-            ranks[source.ref] = rank.overall_rank if is_overall else rank.position_rank
-            if rank.tier is not None:
-                tiers.append(rank.tier)
+            ranks[source.ref] = (
+                None if rank is None else (rank.overall_rank if is_overall else rank.position_rank)
+            )
 
         rows.append(
             {
@@ -335,9 +331,6 @@ def build_rank_pool(
                 "team": player.team,
                 "adp": adp_by_id.get(player.platform_player_id),
                 "ranks": ranks,
-                # The most common tier across sources that gave one -- a
-                # reference point, not a decision.
-                "source_tier": max(set(tiers), key=tiers.count) if tiers else None,
             }
         )
 

@@ -38,7 +38,6 @@ export interface PoolPlayer {
   /** Keyed by source ref. null means that source doesn't rank this player --
    * never a substituted number. */
   ranks: Record<string, number | null>
-  source_tier: number | null
 }
 
 export interface RankPool {

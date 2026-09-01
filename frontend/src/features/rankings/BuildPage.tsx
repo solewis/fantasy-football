@@ -272,6 +272,19 @@ export function BuildPage({ platform, format }: BuildPageProps) {
         </button>
         <button
           type="button"
+          onClick={() =>
+            dispatch({
+              type: 'toggleTierBreak',
+              afterPlayerId: state.order[state.order.length - 1],
+            })
+          }
+          disabled={state.order.length === 0}
+          title="Start a new tier after the last player you picked"
+        >
+          + Tier break
+        </button>
+        <button
+          type="button"
           onClick={() => dispatch({ type: 'undo' })}
           disabled={state.past.length === 0}
         >

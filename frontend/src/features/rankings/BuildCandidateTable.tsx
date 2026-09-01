@@ -48,10 +48,9 @@ export function BuildCandidateTable({
             <table className="build-candidates">
               <thead>
                 <tr>
+                  <th />
                   <th>Player</th>
                   <th>Avg</th>
-                  <th>Range</th>
-                  <th>Cov</th>
                   <th title="The tier this player sits in according to the sources that supply tiers">
                     Tier
                   </th>
@@ -64,12 +63,20 @@ export function BuildCandidateTable({
                       {source.label}
                     </th>
                   ))}
-                  <th />
                 </tr>
               </thead>
               <tbody>
                 {shown.map((candidate) => (
                   <tr key={candidate.platform_player_id}>
+                    <td>
+                      <button
+                        type="button"
+                        className="build-pick"
+                        onClick={() => onPick(candidate.platform_player_id)}
+                      >
+                        Pick
+                      </button>
+                    </td>
                     <td>
                       <PositionTag position={candidate.position} />
                       <span className="player-name">{candidate.name}</span>
@@ -87,14 +94,6 @@ export function BuildCandidateTable({
                     </td>
                     <td className="build-num">
                       {candidate.average?.toFixed(1) ?? '—'}
-                    </td>
-                    <td className="build-num">
-                      {candidate.min !== null && candidate.max !== null
-                        ? `${candidate.min}–${candidate.max}`
-                        : '—'}
-                    </td>
-                    <td className="build-num">
-                      {candidate.coverage}/{candidate.sourceCount}
                     </td>
                     <td className="build-num">
                       {candidate.source_tier ?? '—'}
@@ -117,15 +116,6 @@ export function BuildCandidateTable({
                         </td>
                       )
                     })}
-                    <td>
-                      <button
-                        type="button"
-                        className="build-pick"
-                        onClick={() => onPick(candidate.platform_player_id)}
-                      >
-                        Pick
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -109,24 +109,34 @@ async function renderBuild() {
   render(<BuildPage platform="sleeper" format="half_ppr" />)
   await screen.findByText("Ja'Marr Chase")
   // Every usable source is selected on load, so both opinions are already in
-  // play without touching the picker.
+  // play without touching the picker -- wait for the second source's column.
   await waitFor(() => {
-    expect(screen.getByText('1/2')).toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: 'FantasyPros' }),
+    ).toBeInTheDocument()
   })
 }
 
 describe('BuildPage', () => {
-  it('orders candidates by average rank and shows coverage', async () => {
+  it('orders candidates by average rank', async () => {
     await renderBuild()
 
     const rows = screen.getAllByRole('row').slice(1)
     const names = rows.map((r) => r.textContent ?? '')
-    expect(names[0]).toContain("Ja'Marr Chase")
     // Chase averages 1, Puka (2 and 3) averages 2.5, Jefferson only ADP ranks
+    expect(names[0]).toContain("Ja'Marr Chase")
     expect(names[1]).toContain('Puka Nacua')
     expect(names[2]).toContain('Justin Jefferson')
-    // Jefferson is ranked by 1 of the 2 selected sources
-    expect(names[2]).toContain('1/2')
+  })
+
+  it('puts Pick first so it survives a horizontal scroll', async () => {
+    // With several sources the table scrolls sideways; the action must not be
+    // the thing that scrolls out of reach.
+    await renderBuild()
+
+    const firstRow = screen.getAllByRole('row')[1]
+    const firstCell = firstRow.querySelectorAll('td')[0]
+    expect(firstCell.querySelector('button')).toHaveTextContent('Pick')
   })
 
   it('picking a candidate moves them into the list and advances the slot', async () => {
@@ -189,7 +199,77 @@ describe('BuildPage', () => {
 
     expect(screen.getByRole('checkbox', { name: /ADP/ })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /FantasyPros/ })).toBeChecked()
-    expect(screen.getByText('2 of 2')).toBeInTheDocument()
+  })
+
+  it('adds a tier break after the last pick from the toolbar', async () => {
+    await renderBuild()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Tier break' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Tier 2')).toBeInTheDocument()
+    })
+  })
+
+  it('exposes a visible per-row tier break toggle', async () => {
+    // It used to be opacity:0 until you hovered the row, which meant nobody
+    // found it.
+    await renderBuild()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+
+    const toggle = screen.getByRole('button', {
+      name: /Add tier break after Ja'Marr Chase/,
+    })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(toggle)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', {
+          name: /Remove tier break after Ja'Marr Chase/,
+        }),
+      ).toHaveAttribute('aria-pressed', 'true')
+    })
+  })
+
+  it('saves the tiers implied by the breaks', async () => {
+    const fetchMock = mockBackend()
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '+ Tier break' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('My list (2)')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+    })
+    const put = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit)?.method === 'PUT',
+    )
+    if (!put) throw new Error('no save request was made')
+    const body = JSON.parse((put[1] as RequestInit).body as string) as {
+      entries: { platform_player_id: string; tier: number | null }[]
+    }
+    expect(body.entries.map((e) => e.tier)).toEqual([1, 2])
   })
 
   it('does not recommend anyone', async () => {

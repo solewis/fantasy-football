@@ -39,7 +39,7 @@
 
 .build-grid {
   display: grid;
-  grid-template-columns: 200px minmax(240px, 320px) minmax(0, 1fr);
+  grid-template-columns: 190px minmax(300px, 380px) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -125,6 +125,17 @@
   border-radius: 6px;
   cursor: grab;
   font-size: 13px;
+  /* One line per player. Wrapping made a long name push the row to two lines
+     and drag the tier toggle down with it. */
+  flex-wrap: nowrap;
+}
+
+.build-working-row .player-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .build-working-row:hover {
@@ -136,6 +147,7 @@
 }
 
 .build-slot {
+  flex-shrink: 0;
   min-width: 40px;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted, #898781);
@@ -145,6 +157,7 @@
 /* Deliberately not hidden until hover. A tier-break control you can only find
    by hovering the right row is one nobody finds. */
 .build-row-action {
+  flex-shrink: 0;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted, #898781);
@@ -168,6 +181,7 @@
 }
 
 .build-row-tier {
+  flex-shrink: 0;
   font-size: 10px;
   color: var(--text-muted, #898781);
   font-variant-numeric: tabular-nums;
@@ -350,4 +364,33 @@ li:hover > .build-insert-here,
   max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.build-search {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #33322f);
+  background: var(--surface-2, #1e1e1c);
+  color: var(--text-primary, #fff);
+  min-width: 160px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.build-table-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border, #33322f);
+  font-size: 12px;
+  color: var(--text-muted, #898781);
+}
+
+.build-table-footer button {
+  font-size: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
 }

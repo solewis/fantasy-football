@@ -140,9 +140,13 @@ export function BuildWorkingList({
                     onClick={() => onToggleTierBreak(playerId)}
                     aria-label={`${breaks.has(playerId) ? 'Remove' : 'Add'} tier break after ${player?.name ?? playerId}`}
                     aria-pressed={breaks.has(playerId)}
-                    title="Tier break after this player"
+                    title={
+                      breaks.has(playerId)
+                        ? 'Remove the tier break after this player'
+                        : 'Start a new tier after this player'
+                    }
                   >
-                    ⎯ tier
+                    ⌐
                   </button>
                   <button
                     type="button"

@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import type { PoolSource } from '../../api/rankPool'
 import { isContested, type CandidateSummary } from '../../lib/consensus'
 import { PositionTag } from '../players/PositionTag'
@@ -12,7 +14,9 @@ interface BuildCandidateTableProps {
   loading: boolean
   emptyMessage: string
   onPick: (playerId: string) => void
-  limit?: number
+  /** How many rows to show before "Show more". Search overrides it, so a
+   * player ranked 200th by consensus is still reachable by name. */
+  pageSize?: number
 }
 
 /** What each source thinks about the next few candidates.
@@ -29,18 +33,52 @@ export function BuildCandidateTable({
   loading,
   emptyMessage,
   onPick,
-  limit = 8,
+  pageSize = 8,
 }: BuildCandidateTableProps) {
-  const shown = candidates.slice(0, limit)
+  const [search, setSearch] = useState('')
+  const [limit, setLimit] = useState(pageSize)
+
+  const query = search.trim().toLowerCase()
+  const filtered = query
+    ? candidates.filter(
+        (c) =>
+          c.name.toLowerCase().includes(query) ||
+          (c.team ?? '').toLowerCase().includes(query),
+      )
+    : candidates
+  // A search is a request for a specific player, so it isn't paged -- being
+  // told "no results" because your guy is 40th by consensus would be worse
+  // than useless.
+  const shown = query ? filtered.slice(0, 50) : filtered.slice(0, limit)
+
+  function handlePick(playerId: string) {
+    // The search was for one player; once they're placed the slot has moved on
+    // and leaving the filter up would show an empty table.
+    setSearch('')
+    setLimit(pageSize)
+    onPick(playerId)
+  }
 
   return (
     <div className="build-panel">
-      <div className="build-panel-head">Filling {slotLabel}</div>
+      <div className="build-panel-head">
+        <span>Filling {slotLabel}</span>
+        <input
+          className="build-search"
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Find a player…"
+          aria-label="Find a player"
+        />
+      </div>
 
       {loading ? (
         <p className="rankings-status">Loading…</p>
       ) : shown.length === 0 ? (
-        <p className="rankings-status">{emptyMessage}</p>
+        <p className="rankings-status">
+          {query ? `No player matching "${search.trim()}".` : emptyMessage}
+        </p>
       ) : (
         <>
           <DeltaLegend slot={slot} slotLabel={slotLabel} />
@@ -69,7 +107,7 @@ export function BuildCandidateTable({
                       <button
                         type="button"
                         className="build-pick"
-                        onClick={() => onPick(candidate.platform_player_id)}
+                        onClick={() => handlePick(candidate.platform_player_id)}
                       >
                         Pick
                       </button>
@@ -114,6 +152,26 @@ export function BuildCandidateTable({
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="build-table-footer">
+            <span>
+              Showing {shown.length} of {filtered.length}
+            </span>
+            {!query && shown.length < filtered.length && (
+              <>
+                <button type="button" onClick={() => setLimit((n) => n + 25)}>
+                  Show 25 more
+                </button>
+                <button type="button" onClick={() => setLimit(filtered.length)}>
+                  Show all
+                </button>
+              </>
+            )}
+            {limit > pageSize && !query && (
+              <button type="button" onClick={() => setLimit(pageSize)}>
+                Collapse
+              </button>
+            )}
           </div>
         </>
       )}

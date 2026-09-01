@@ -61,7 +61,16 @@ const PLAYERS = [
   },
 ]
 
-function mockBackend() {
+const DEEP_PLAYERS = Array.from({ length: 30 }, (_, i) => ({
+  platform_player_id: `d${i}`,
+  name: `Deep Player ${i}`,
+  position: 'WR',
+  team: 'CIN',
+  adp: i + 1,
+  ranks: { adp: i + 1, 'dataset:1': i + 1 },
+}))
+
+function mockBackend(players = PLAYERS) {
   const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
     const { pathname } = new URL(url)
     if (pathname === '/rank-sources')
@@ -87,7 +96,7 @@ function mockBackend() {
               unresolved_count: 0,
             },
           ],
-          players: PLAYERS,
+          players,
         }),
       )
     }
@@ -267,6 +276,70 @@ describe('BuildPage', () => {
       entries: { platform_player_id: string; tier: number | null }[]
     }
     expect(body.entries.map((e) => e.tier)).toEqual([1, 2])
+  })
+
+  it('finds a player who is too deep to be shown', async () => {
+    // The table pages at 8; someone ranked 25th by consensus is unreachable
+    // without this, and "the guy I want isn't in the top 8" is the normal case
+    // when your opinion differs from the sources'.
+    mockBackend([...PLAYERS, ...DEEP_PLAYERS])
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+
+    expect(screen.queryByText('Deep Player 25')).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Find a player'), {
+      target: { value: 'Deep Player 25' },
+    })
+
+    expect(await screen.findByText('Deep Player 25')).toBeInTheDocument()
+  })
+
+  it('clears the search once the player is picked', async () => {
+    mockBackend([...PLAYERS, ...DEEP_PLAYERS])
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.change(screen.getByLabelText('Find a player'), {
+      target: { value: 'Deep Player 25' },
+    })
+    await screen.findByText('Deep Player 25')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pick' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+    // ...and the table is back to the normal flow rather than an empty filter
+    expect(
+      (screen.getByLabelText('Find a player') as HTMLInputElement).value,
+    ).toBe('')
+    expect(screen.getByText("Ja'Marr Chase")).toBeInTheDocument()
+  })
+
+  it('says so when a search matches nobody', async () => {
+    await renderBuild()
+
+    fireEvent.change(screen.getByLabelText('Find a player'), {
+      target: { value: 'Nobody At All' },
+    })
+
+    expect(
+      await screen.findByText(/No player matching "Nobody At All"/),
+    ).toBeInTheDocument()
+  })
+
+  it('can page further down the list', async () => {
+    mockBackend([...PLAYERS, ...DEEP_PLAYERS])
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+
+    expect(screen.getByText('Showing 8 of 33')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show 25 more' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Showing 33 of 33')).toBeInTheDocument()
+    })
   })
 
   it('does not recommend anyone', async () => {

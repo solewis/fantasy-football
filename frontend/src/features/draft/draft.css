@@ -220,8 +220,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Deliberately sets no colour: the cell owns it, because a filled cell is
+   dark-ink-on-position-colour while an empty one is light ink on navy. Setting
+   it here would win over the cell's inherited value and paint every name white
+   in dark mode, which is exactly what it used to do. */
 .draft-board-player-name {
-  color: var(--text-primary);
   font-weight: 500;
 }
 

@@ -28,6 +28,19 @@ const adpPlayers: PlayerRow[] = [
     break_after: null,
     flag: null,
   },
+  // Deliberately absent from savedRanks below, so the ADP tail has something
+  // to append.
+  {
+    rank: 3,
+    platform_player_id: '4',
+    name: 'Puka Nacua',
+    position: 'WR',
+    team: 'LAR',
+    adp: 4.0,
+    tier: null,
+    break_after: null,
+    flag: null,
+  },
 ]
 
 const savedRanks: RankRow[] = [
@@ -185,7 +198,9 @@ describe('DraftPlayerPool', () => {
     )
     await screen.findByText('Bijan Robinson')
 
-    fireEvent.click(screen.getByRole('button', { name: '+ Queue' }))
+    // Bijan is first; the other Queue buttons belong to Chase (already
+    // queued, so disabled) and the ADP tail below the saved ranks.
+    fireEvent.click(screen.getAllByRole('button', { name: '+ Queue' })[0])
     expect(onQueue).toHaveBeenCalledWith('2')
 
     expect(screen.getByRole('button', { name: 'Queued' })).toBeDisabled()
@@ -232,7 +247,8 @@ describe('DraftPlayerPool', () => {
     expect(
       screen.queryByRole('button', { name: 'Draft' }),
     ).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: '+ Queue' })).toHaveLength(2)
+    // Two saved ranks plus the one ADP-tail player they don't cover.
+    expect(screen.getAllByRole('button', { name: '+ Queue' })).toHaveLength(3)
   })
 })
 
@@ -286,5 +302,69 @@ describe('marks carried through from the rankings builder', () => {
       expect(row.className).not.toContain('tier-break')
     }
     expect(screen.queryByText('target')).toBeNull()
+  })
+})
+
+describe('the ADP tail below your own ranks', () => {
+  it('appends everyone you did not rank, so the pool cannot run dry', async () => {
+    // A hand-built list is usually shorter than a draft is long. Without the
+    // tail the pool empties out mid-draft with picks still to make.
+    mockFetch({ ranks: savedRanks, players: adpPlayers })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+
+    // savedRanks covers 2 players; the ADP list has one the ranks don't
+    const rows = screen.getAllByRole('row').slice(1)
+    expect(rows.length).toBeGreaterThan(savedRanks.length)
+    expect(screen.getByText(/past your ranks/)).toBeInTheDocument()
+  })
+
+  it('does not duplicate a player who is in both lists', async () => {
+    mockFetch({ ranks: savedRanks, players: adpPlayers })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+
+    expect(screen.getAllByText('Bijan Robinson')).toHaveLength(1)
+  })
+
+  it('marks nothing as past-your-ranks when there are no saved ranks', async () => {
+    mockFetch({ ranks: [], players: adpPlayers })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText("Ja'Marr Chase")
+
+    expect(screen.queryByText(/past your ranks/)).toBeNull()
   })
 })

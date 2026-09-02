@@ -551,3 +551,21 @@
 .draft-pool-table tr.flag-fade .player-name {
   opacity: 0.65;
 }
+
+/* Everything below your own list. Still draftable -- a hand-built list is
+   usually shorter than a draft is long -- just visibly not yours. */
+.draft-pool-table tr.unranked td {
+  color: var(--text-muted, #898781);
+}
+
+.draft-pool-table tr.unranked-start > td {
+  border-top: 2px solid var(--border-strong, #4a4945);
+}
+
+.draft-pool-unranked-note {
+  margin-left: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #898781);
+}

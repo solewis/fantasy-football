@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 
-import type { RankRow } from '../../api/ranks'
-import { fetchRankedOrAdpFallback } from '../../lib/fetchRankedPlayers'
+import {
+  fetchRankedOrAdpFallback,
+  type PoolRow,
+} from '../../lib/fetchRankedPlayers'
 import { POSITIONS, SEASON, type PositionFilter } from '../../lib/formats'
 import { PositionTag } from '../players/PositionTag'
 import '../players/players.css'
@@ -36,7 +38,7 @@ export function DraftPlayerPool({
 }: DraftPlayerPoolProps) {
   const [position, setPosition] = useState<PositionFilter>('ALL')
   const [search, setSearch] = useState('')
-  const [allRows, setAllRows] = useState<RankRow[]>([])
+  const [allRows, setAllRows] = useState<PoolRow[]>([])
   const [error, setError] = useState<string | null>(null)
   // format/platform/rankSetId are props here (owned by the parent's draft
   // setup), not a local selector, so there's no local event handler to set a
@@ -140,6 +142,12 @@ export function DraftPlayerPool({
                     index > 0 && rows[index - 1].break_after
                       ? `tier-break-${rows[index - 1].break_after}`
                       : '',
+                    row.unranked ? 'unranked' : '',
+                    // The first row past your own list, so you can see at a
+                    // glance that you're off the end of your ranks.
+                    row.unranked && index > 0 && !rows[index - 1].unranked
+                      ? 'unranked-start'
+                      : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
@@ -163,6 +171,11 @@ export function DraftPlayerPool({
                         title="You marked this player a fade"
                       >
                         fade
+                      </span>
+                    )}
+                    {row.unranked && index > 0 && !rows[index - 1].unranked && (
+                      <span className="draft-pool-unranked-note">
+                        past your ranks — ADP order below
                       </span>
                     )}
                   </td>

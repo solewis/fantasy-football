@@ -1,10 +1,9 @@
 import {
-  armOf,
   deltaBucket,
   describeDelta,
   formatDelta,
   rankDelta,
-  thresholdsAt,
+  type DeltaBounds,
 } from '../lib/deltaBuckets'
 import './delta.css'
 
@@ -12,6 +11,9 @@ interface DeltaChipProps {
   /** null when this source doesn't rank the player. */
   sourceRank: number | null
   slot: number
+  /** Where the intensity steps fall. The draft pool and the list builder use
+   * different scales -- see PICK_BOUNDS and boundsForSlot. */
+  bounds: DeltaBounds
   sourceLabel: string
   slotLabel: string
   /** True when the source simply doesn't publish this deep -- a different fact
@@ -28,12 +30,13 @@ interface DeltaChipProps {
 export function DeltaChip({
   sourceRank,
   slot,
+  bounds,
   sourceLabel,
   slotLabel,
   beyondDepth = false,
 }: DeltaChipProps) {
   const delta = rankDelta(sourceRank, slot)
-  const bucket = deltaBucket(delta, thresholdsAt(slot))
+  const bucket = deltaBucket(delta, bounds)
   const label = describeDelta(
     sourceLabel,
     sourceRank,
@@ -45,8 +48,9 @@ export function DeltaChip({
   return (
     <span
       className="delta-chip"
-      data-bucket={bucket}
-      data-arm={armOf(bucket)}
+      data-arm={bucket.arm}
+      data-level={bucket.level}
+      data-missing={bucket.missing ? 'true' : undefined}
       title={label}
     >
       <span aria-hidden="true">{formatDelta(delta)}</span>

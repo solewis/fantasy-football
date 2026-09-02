@@ -6,40 +6,38 @@
  *
  * "Higher rank" is ambiguous in English -- rank 3 is a higher rank but a lower
  * number -- so the signed delta is the source of truth everywhere and the
- * bucket name is only ever used to pick a colour.
+ * bucket is only ever used to pick a colour.
  */
-
-export type DeltaBucket =
-  | 'missing'
-  | 'neutral'
-  | 'value-slight'
-  | 'value-moderate'
-  | 'value-strong'
-  | 'behind-slight'
-  | 'behind-moderate'
-  | 'behind-strong'
 
 export type DeltaArm = 'none' | 'value' | 'behind'
 
-export interface DeltaThresholds {
-  /** |delta| at or below this is a slight disagreement. */
-  slight: number
-  /** |delta| at or below this is moderate; beyond it is strong. */
-  moderate: number
+/** 0 = agreement, 1 = barely, 5 = as far apart as the scale goes. Intensity
+ * always runs light to dark, in both themes: a small disagreement is a pale
+ * chip, a big one is a saturated one. */
+export type DeltaLevel = 0 | 1 | 2 | 3 | 4 | 5
+
+export interface DeltaBucket {
+  arm: DeltaArm
+  level: DeltaLevel
+  /** Whether the source has an opinion at all. */
+  missing: boolean
 }
 
-/** Thresholds scale with the slot.
- *
- * A fixed band is wrong at one end or the other: +/-2 is a real disagreement at
- * WR3 and pure noise at overall pick 84. The floors keep the top of a list
- * strict -- at slot 1 a source saying WR3 reads as a disagreement, which is
- * what you'd expect from "three sources have him WR1 and one has him WR3".
+/** Upper bound of each level, so a delta at or below `bounds[i]` is level i+1.
+ * Anything past the last bound is the top level. */
+export type DeltaBounds = readonly [number, number, number, number]
+
+/** Comparing a player's ADP or your own rank against the pick on the clock.
+ * Absolute rather than scaled: a 12-pick gap reads the same whether it turns
+ * up early or late, and this is the scale a drafter already has in their head.
  */
-export function thresholdsAt(slot: number): DeltaThresholds {
-  return {
-    slight: Math.max(2, Math.round(slot * 0.05)),
-    moderate: Math.max(5, Math.round(slot * 0.15)),
-  }
+export const PICK_BOUNDS: DeltaBounds = [2, 5, 8, 11]
+
+/** Building a list, where you are filling slot N of your own ordering.
+ * Scaled, because +/-2 is a real disagreement at WR3 and noise at pick 84. */
+export function boundsForSlot(slot: number): DeltaBounds {
+  const unit = Math.max(1, Math.round(slot * 0.04))
+  return [unit, unit * 3, unit * 6, unit * 10]
 }
 
 export function rankDelta(
@@ -51,21 +49,16 @@ export function rankDelta(
 
 export function deltaBucket(
   delta: number | null,
-  thresholds: DeltaThresholds,
+  bounds: DeltaBounds,
 ): DeltaBucket {
-  if (delta === null) return 'missing'
-  if (delta === 0) return 'neutral'
+  if (delta === null) return { arm: 'none', level: 0, missing: true }
+  if (delta === 0) return { arm: 'none', level: 0, missing: false }
 
   const magnitude = Math.abs(delta)
-  const arm = delta < 0 ? 'value' : 'behind'
-  if (magnitude <= thresholds.slight) return `${arm}-slight`
-  if (magnitude <= thresholds.moderate) return `${arm}-moderate`
-  return `${arm}-strong`
-}
-
-export function armOf(bucket: DeltaBucket): DeltaArm {
-  if (bucket === 'missing' || bucket === 'neutral') return 'none'
-  return bucket.startsWith('value') ? 'value' : 'behind'
+  const arm: DeltaArm = delta < 0 ? 'value' : 'behind'
+  const index = bounds.findIndex((bound) => magnitude <= bound)
+  const level = (index === -1 ? 5 : index + 1) as DeltaLevel
+  return { arm, level, missing: false }
 }
 
 /** '+3' | '-1' | '0' | '—'. An ASCII hyphen deliberately, not a minus sign --

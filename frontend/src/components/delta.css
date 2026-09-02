@@ -3,78 +3,83 @@
  *   delta = 0  source agrees                            -> gray  (neutral)
  *   delta > 0  source has them LOWER than this slot     -> red   (behind)
  *
- * blue <-> red with a gray midpoint is the documented diverging pair. The blue
- * arm is the documented sequential blue ramp; the red arm is stepped to the
- * same lightness levels, with red-450 landing on the documented critical red
- * #d03b3b, which is what anchors it rather than it being eyeballed.
+ * blue <-> red with a gray midpoint is the documented diverging pair.
  *
- * Validated with the dataviz skill's validate_palette.js. The two poles pass
- * every check in both modes:
- *   "#2a78d6,#d03b3b" --mode light  -> CVD dE 23.8, normal 31.6, contrast OK
- *   "#3987e5,#e66767" --mode dark   -> CVD dE 19.2, normal 29.0, contrast OK
+ * Intensity runs light to dark in BOTH themes: level 1 is a barely-there tint,
+ * level 5 is saturated. An earlier version inverted the dark-mode ramp on the
+ * theory that lighter = more prominent on a dark surface, which made +1 darker
+ * than +9 and read as noise rather than a scale. Magnitude should look like
+ * magnitude regardless of theme.
  *
- * Two things NOT to "fix":
- *   - The palest steps sit under 3:1 against the surface. That's the documented
- *     relief case, and the relief is real: every chip prints its signed number,
- *     so the fill never carries meaning alone.
- *   - Running the categorical validator across all six fills at once fails on a
- *     within-arm pair. Steps within one arm are meant to sit close -- they're
- *     an ordinal ramp, not separate series.
- *
- * Every ink/fill pair below clears 4.5:1 text contrast.
+ * Ink flips to white at level 4, where black stops clearing 4.5:1. Every
+ * step/ink pair is >= 4.9:1; the palest are 14-15:1.
  */
-:root {
-  --delta-neutral-bg: #f0efec;
-  --delta-neutral-ink: #52514e;
-  --delta-value-1-bg: #86b6ef;
-  --delta-value-1-ink: #0b0b0b;
-  --delta-value-2-bg: #3987e5;
-  --delta-value-2-ink: #0b0b0b;
-  --delta-value-3-bg: #256abf;
-  --delta-value-3-ink: #ffffff;
-  --delta-behind-1-bg: #e4857e;
-  --delta-behind-1-ink: #0b0b0b;
-  --delta-behind-2-bg: #d65853;
-  --delta-behind-2-ink: #0b0b0b;
-  --delta-behind-3-bg: #b93434;
-  --delta-behind-3-ink: #ffffff;
+.delta-chip[data-arm='behind'][data-level='1'] {
+  background: #f6c9c6;
+  color: #000;
+}
+.delta-chip[data-arm='behind'][data-level='2'] {
+  background: #eda29e;
+  color: #000;
+}
+.delta-chip[data-arm='behind'][data-level='3'] {
+  background: #dd6f6a;
+  color: #000;
+}
+.delta-chip[data-arm='behind'][data-level='4'] {
+  background: #c0403c;
+  color: #fff;
+}
+.delta-chip[data-arm='behind'][data-level='5'] {
+  background: #8f2420;
+  color: #fff;
 }
 
-/* Dark steps are selected for the dark surface, not flipped from light. */
+.delta-chip[data-arm='value'][data-level='1'] {
+  background: #c6dcf9;
+  color: #000;
+}
+.delta-chip[data-arm='value'][data-level='2'] {
+  background: #9cc0f2;
+  color: #000;
+}
+.delta-chip[data-arm='value'][data-level='3'] {
+  background: #6a9ae4;
+  color: #000;
+}
+.delta-chip[data-arm='value'][data-level='4'] {
+  background: #3a6fc4;
+  color: #fff;
+}
+.delta-chip[data-arm='value'][data-level='5'] {
+  background: #1e4a8c;
+  color: #fff;
+}
+
+/* Agreement: the neutral midpoint of the diverging pair. */
+.delta-chip[data-arm='none'] {
+  background: #f0efec;
+  color: #52514e;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --delta-neutral-bg: #383835;
-    --delta-neutral-ink: #c3c2b7;
-    --delta-value-1-bg: #184f95;
-    --delta-value-1-ink: #ffffff;
-    --delta-value-2-bg: #256abf;
-    --delta-value-2-ink: #ffffff;
-    --delta-value-3-bg: #3987e5;
-    --delta-value-3-ink: #0b0b0b;
-    --delta-behind-1-bg: #902223;
-    --delta-behind-1-ink: #ffffff;
-    --delta-behind-2-bg: #b93434;
-    --delta-behind-2-ink: #ffffff;
-    --delta-behind-3-bg: #d65853;
-    --delta-behind-3-ink: #0b0b0b;
+  :root:not([data-theme='light']) .delta-chip[data-arm='none'] {
+    background: #383835;
+    color: #c3c2b7;
   }
 }
 
-:root[data-theme='dark'] {
-  --delta-neutral-bg: #383835;
-  --delta-neutral-ink: #c3c2b7;
-  --delta-value-1-bg: #184f95;
-  --delta-value-1-ink: #ffffff;
-  --delta-value-2-bg: #256abf;
-  --delta-value-2-ink: #ffffff;
-  --delta-value-3-bg: #3987e5;
-  --delta-value-3-ink: #0b0b0b;
-  --delta-behind-1-bg: #902223;
-  --delta-behind-1-ink: #ffffff;
-  --delta-behind-2-bg: #b93434;
-  --delta-behind-2-ink: #ffffff;
-  --delta-behind-3-bg: #d65853;
-  --delta-behind-3-ink: #0b0b0b;
+:root[data-theme='dark'] .delta-chip[data-arm='none'] {
+  background: #383835;
+  color: #c3c2b7;
+}
+
+/* No opinion at all -- deliberately unlike agreement, which is a real signal. */
+.delta-chip[data-missing='true'] {
+  background: transparent;
+  color: var(--text-muted, #898781);
+  border-color: var(--border, #33322f);
+  border-style: dashed;
 }
 
 .delta-chip {
@@ -93,41 +98,6 @@
   margin-right: 2px;
 }
 
-.delta-chip[data-bucket='missing'] {
-  background: transparent;
-  color: var(--text-muted, #898781);
-  border-color: var(--border, #33322f);
-  border-style: dashed;
-}
-.delta-chip[data-bucket='neutral'] {
-  background: var(--delta-neutral-bg);
-  color: var(--delta-neutral-ink);
-}
-.delta-chip[data-bucket='value-slight'] {
-  background: var(--delta-value-1-bg);
-  color: var(--delta-value-1-ink);
-}
-.delta-chip[data-bucket='value-moderate'] {
-  background: var(--delta-value-2-bg);
-  color: var(--delta-value-2-ink);
-}
-.delta-chip[data-bucket='value-strong'] {
-  background: var(--delta-value-3-bg);
-  color: var(--delta-value-3-ink);
-}
-.delta-chip[data-bucket='behind-slight'] {
-  background: var(--delta-behind-1-bg);
-  color: var(--delta-behind-1-ink);
-}
-.delta-chip[data-bucket='behind-moderate'] {
-  background: var(--delta-behind-2-bg);
-  color: var(--delta-behind-2-ink);
-}
-.delta-chip[data-bucket='behind-strong'] {
-  background: var(--delta-behind-3-bg);
-  color: var(--delta-behind-3-ink);
-}
-
 /* The OS has overridden backgrounds here, so border style carries the arm.
    The number is already in the text. */
 @media (forced-colors: active) {
@@ -142,6 +112,17 @@
   .delta-chip[data-arm='behind'] {
     border-style: dashed;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .delta-legend {

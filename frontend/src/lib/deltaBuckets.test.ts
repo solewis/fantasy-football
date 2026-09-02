@@ -1,73 +1,86 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  armOf,
+  boundsForSlot,
   deltaBucket,
   describeDelta,
   formatDelta,
+  PICK_BOUNDS,
   rankDelta,
-  thresholdsAt,
 } from './deltaBuckets'
 
-describe('thresholdsAt', () => {
-  it('keeps the top of a list strict', () => {
-    // At slot 1, a source saying WR3 has to read as a disagreement -- that's
-    // the "three sources have him WR1 and one has him WR3" case.
-    expect(thresholdsAt(1)).toEqual({ slight: 2, moderate: 5 })
-    expect(deltaBucket(2, thresholdsAt(1))).toBe('behind-slight')
-  })
-
-  it('widens deeper into a list', () => {
-    // +/-2 is a real disagreement at WR3 and pure noise at overall pick 84.
-    expect(thresholdsAt(84)).toEqual({ slight: 4, moderate: 13 })
-    expect(thresholdsAt(150)).toEqual({ slight: 8, moderate: 23 })
-  })
-
-  it('buckets the same absolute delta differently by depth', () => {
-    expect(deltaBucket(5, thresholdsAt(10))).toBe('behind-moderate')
-    expect(deltaBucket(5, thresholdsAt(84))).toBe('behind-moderate')
-    expect(deltaBucket(3, thresholdsAt(10))).toBe('behind-moderate')
-    expect(deltaBucket(3, thresholdsAt(84))).toBe('behind-slight')
-  })
-})
-
 describe('deltaBucket', () => {
-  const thresholds = { slight: 2, moderate: 5 }
+  it('reads zero as agreement, on neither arm', () => {
+    expect(deltaBucket(0, PICK_BOUNDS)).toEqual({
+      arm: 'none',
+      level: 0,
+      missing: false,
+    })
+  })
 
-  it.each([
-    [null, 'missing'],
-    [0, 'neutral'],
-    [-1, 'value-slight'],
-    [-2, 'value-slight'],
-    [-3, 'value-moderate'],
-    [-5, 'value-moderate'],
-    [-6, 'value-strong'],
-    [1, 'behind-slight'],
-    [2, 'behind-slight'],
-    [3, 'behind-moderate'],
-    [5, 'behind-moderate'],
-    [6, 'behind-strong'],
-  ])('delta %s is %s', (delta, expected) => {
-    expect(deltaBucket(delta, thresholds)).toBe(expected)
+  it('marks a source with no opinion as missing, not as agreement', () => {
+    expect(deltaBucket(null, PICK_BOUNDS)).toEqual({
+      arm: 'none',
+      level: 0,
+      missing: true,
+    })
+  })
+
+  it('climbs monotonically with the size of the gap', () => {
+    // The bug this replaces: +1 rendered darker than +9, because the dark-mode
+    // ramp ran the other way. Intensity has to track magnitude.
+    const levels = [1, 3, 6, 9, 15].map(
+      (d) => deltaBucket(d, PICK_BOUNDS).level,
+    )
+    expect(levels).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('is symmetric across the two arms', () => {
+    for (const magnitude of [1, 3, 6, 9, 15]) {
+      const behind = deltaBucket(magnitude, PICK_BOUNDS)
+      const value = deltaBucket(-magnitude, PICK_BOUNDS)
+      expect(behind.arm).toBe('behind')
+      expect(value.arm).toBe('value')
+      expect(behind.level).toBe(value.level)
+    }
+  })
+
+  it('tops out rather than running off the end', () => {
+    expect(deltaBucket(200, PICK_BOUNDS).level).toBe(5)
+    expect(deltaBucket(-200, PICK_BOUNDS).level).toBe(5)
   })
 
   it('reads a negative delta as the source being higher on the player', () => {
     // rank 2 against slot 5 -- a lower number is a higher rank
     expect(rankDelta(2, 5)).toBe(-3)
-    expect(deltaBucket(rankDelta(2, 5), thresholds)).toBe('value-moderate')
+    expect(deltaBucket(rankDelta(2, 5), PICK_BOUNDS).arm).toBe('value')
   })
 })
 
-describe('armOf', () => {
-  it.each([
-    ['missing', 'none'],
-    ['neutral', 'none'],
-    ['value-slight', 'value'],
-    ['value-strong', 'value'],
-    ['behind-slight', 'behind'],
-    ['behind-strong', 'behind'],
-  ] as const)('%s is on the %s arm', (bucket, arm) => {
-    expect(armOf(bucket)).toBe(arm)
+describe('boundsForSlot', () => {
+  it('stays tight at the top of a list', () => {
+    // Filling WR1, a source saying WR3 is a real disagreement.
+    const bounds = boundsForSlot(1)
+    expect(deltaBucket(2, bounds).arm).toBe('behind')
+    expect(deltaBucket(2, bounds).level).toBeGreaterThanOrEqual(2)
+  })
+
+  it('widens deeper into a list', () => {
+    // The same gap is noise by pick 84.
+    expect(deltaBucket(3, boundsForSlot(1)).level).toBeGreaterThan(
+      deltaBucket(3, boundsForSlot(84)).level,
+    )
+  })
+
+  it('never collapses to zero width', () => {
+    expect(boundsForSlot(1)[0]).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('PICK_BOUNDS', () => {
+  it('spans roughly a round, which is the scale a drafter thinks in', () => {
+    expect(deltaBucket(1, PICK_BOUNDS).level).toBe(1)
+    expect(deltaBucket(12, PICK_BOUNDS).level).toBe(5)
   })
 })
 
@@ -100,15 +113,12 @@ describe('describeDelta', () => {
 })
 
 describe('the case this feature was built around', () => {
-  it('three sources at WR1 read neutral and one at WR3 reads negative', () => {
-    const slot = 1
-    const thresholds = thresholdsAt(slot)
-    const sourceRanks = [1, 1, 1, 3]
-
-    const buckets = sourceRanks.map((rank) =>
-      deltaBucket(rankDelta(rank, slot), thresholds),
+  it('three sources at WR1 read as agreement and one at WR3 does not', () => {
+    const bounds = boundsForSlot(1)
+    const buckets = [1, 1, 1, 3].map(
+      (rank) => deltaBucket(rankDelta(rank, 1), bounds).arm,
     )
 
-    expect(buckets).toEqual(['neutral', 'neutral', 'neutral', 'behind-slight'])
+    expect(buckets).toEqual(['none', 'none', 'none', 'behind'])
   })
 })

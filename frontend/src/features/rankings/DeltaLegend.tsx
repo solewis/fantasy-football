@@ -1,58 +1,54 @@
-import {
-  armOf,
-  deltaBucket,
-  formatDelta,
-  thresholdsAt,
-} from '../../lib/deltaBuckets'
+import { DeltaChip } from '../../components/DeltaChip'
+import type { DeltaBounds } from '../../lib/deltaBuckets'
 import '../../components/delta.css'
 
 interface DeltaLegendProps {
   slot: number
   slotLabel: string
+  bounds: DeltaBounds
 }
 
 /** What the chip colours mean, at the current slot.
  *
- * Rendered from the same thresholds the chips use, so it stays honest as the
- * bands widen deeper into a list rather than drifting out of date.
+ * Built from the same bounds the chips use, so it can't drift out of date when
+ * the scale changes.
  */
-export function DeltaLegend({ slot, slotLabel }: DeltaLegendProps) {
-  const thresholds = thresholdsAt(slot)
+export function DeltaLegend({ slot, slotLabel, bounds }: DeltaLegendProps) {
   const samples = [
-    -(thresholds.moderate + 2),
-    -thresholds.moderate,
-    -1,
+    -(bounds[3] + 1),
+    -bounds[2],
+    -bounds[0],
     0,
-    1,
-    thresholds.moderate,
-    thresholds.moderate + 2,
+    bounds[0],
+    bounds[2],
+    bounds[3] + 1,
   ]
 
   return (
     <div
       className="delta-legend"
       role="img"
-      aria-label={`Each chip is a source's rank minus ${slotLabel}. Negative means that source is higher on the player than this slot.`}
+      aria-label={`Each chip is a source's rank minus ${slotLabel}. Negative means that source is higher on the player than this slot; the deeper the colour, the bigger the gap.`}
     >
       <span>higher than {slotLabel}</span>
-      {samples.map((delta) => {
-        const bucket = deltaBucket(delta, thresholds)
-        return (
-          <span
-            key={delta}
-            className="delta-chip"
-            data-bucket={bucket}
-            data-arm={armOf(bucket)}
-            aria-hidden="true"
-          >
-            {formatDelta(delta)}
-          </span>
-        )
-      })}
+      {samples.map((delta) => (
+        <DeltaChip
+          key={delta}
+          sourceRank={slot + delta}
+          slot={slot}
+          bounds={bounds}
+          sourceLabel="Example"
+          slotLabel={slotLabel}
+        />
+      ))}
       <span>lower</span>
-      <span className="delta-chip" data-bucket="missing" aria-hidden="true">
-        —
-      </span>
+      <DeltaChip
+        sourceRank={null}
+        slot={slot}
+        bounds={bounds}
+        sourceLabel="Example"
+        slotLabel={slotLabel}
+      />
       <span>unranked</span>
     </div>
   )

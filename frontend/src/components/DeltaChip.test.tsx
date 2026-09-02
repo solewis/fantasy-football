@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
+import { PICK_BOUNDS } from '../lib/deltaBuckets'
 import { DeltaChip } from './DeltaChip'
 
 /** Note: never assert on computed colour here. jsdom doesn't resolve CSS
@@ -15,6 +16,7 @@ describe('DeltaChip', () => {
         slot={1}
         sourceLabel="FantasyPros"
         slotLabel="WR1"
+        bounds={PICK_BOUNDS}
       />,
     )
 
@@ -23,15 +25,27 @@ describe('DeltaChip', () => {
 
   it('marks agreement neutral and disagreement on an arm', () => {
     const { rerender, container } = render(
-      <DeltaChip sourceRank={1} slot={1} sourceLabel="ADP" slotLabel="WR1" />,
+      <DeltaChip
+        sourceRank={1}
+        slot={1}
+        sourceLabel="ADP"
+        slotLabel="WR1"
+        bounds={PICK_BOUNDS}
+      />,
     )
     expect(container.querySelector('.delta-chip')).toHaveAttribute(
-      'data-bucket',
-      'neutral',
+      'data-arm',
+      'none',
     )
 
     rerender(
-      <DeltaChip sourceRank={3} slot={1} sourceLabel="ADP" slotLabel="WR1" />,
+      <DeltaChip
+        sourceRank={3}
+        slot={1}
+        sourceLabel="ADP"
+        slotLabel="WR1"
+        bounds={PICK_BOUNDS}
+      />,
     )
     expect(container.querySelector('.delta-chip')).toHaveAttribute(
       'data-arm',
@@ -39,7 +53,13 @@ describe('DeltaChip', () => {
     )
 
     rerender(
-      <DeltaChip sourceRank={1} slot={4} sourceLabel="ADP" slotLabel="WR4" />,
+      <DeltaChip
+        sourceRank={1}
+        slot={4}
+        sourceLabel="ADP"
+        slotLabel="WR4"
+        bounds={PICK_BOUNDS}
+      />,
     )
     expect(container.querySelector('.delta-chip')).toHaveAttribute(
       'data-arm',
@@ -54,13 +74,14 @@ describe('DeltaChip', () => {
         slot={1}
         sourceLabel="ADP"
         slotLabel="WR1"
+        bounds={PICK_BOUNDS}
       />,
     )
 
     expect(screen.getByText('—')).toBeInTheDocument()
     expect(container.querySelector('.delta-chip')).toHaveAttribute(
-      'data-bucket',
-      'missing',
+      'data-missing',
+      'true',
     )
   })
 
@@ -71,6 +92,7 @@ describe('DeltaChip', () => {
         slot={2}
         sourceLabel="FantasyPros"
         slotLabel="WR2"
+        bounds={PICK_BOUNDS}
       />,
     )
 
@@ -86,6 +108,7 @@ describe('DeltaChip', () => {
         slot={200}
         sourceLabel="FantasyPros"
         slotLabel="#200"
+        bounds={PICK_BOUNDS}
         beyondDepth
       />,
     )

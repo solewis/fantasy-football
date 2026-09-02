@@ -183,9 +183,7 @@ describe('BuildPage', () => {
     const jeffersonRow = screen
       .getAllByRole('row')
       .find((r) => r.textContent?.includes('Justin Jefferson'))
-    expect(
-      jeffersonRow?.querySelector('[data-bucket="missing"]'),
-    ).not.toBeNull()
+    expect(jeffersonRow?.querySelector('[data-missing="true"]')).not.toBeNull()
   })
 
   it('disables a source that cannot serve the current axis', async () => {

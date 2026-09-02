@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import type { PoolSource } from '../../api/rankPool'
 import { isContested, type CandidateSummary } from '../../lib/consensus'
+import { boundsForSlot } from '../../lib/deltaBuckets'
 import { PositionTag } from '../players/PositionTag'
 import { DeltaChip } from '../../components/DeltaChip'
 import { DeltaLegend } from './DeltaLegend'
@@ -50,6 +51,7 @@ export function BuildCandidateTable({
   // told "no results" because your guy is 40th by consensus would be worse
   // than useless.
   const shown = query ? filtered.slice(0, 50) : filtered.slice(0, limit)
+  const bounds = boundsForSlot(slot)
 
   function handlePick(playerId: string) {
     // The search was for one player; once they're placed the slot has moved on
@@ -81,7 +83,7 @@ export function BuildCandidateTable({
         </p>
       ) : (
         <>
-          <DeltaLegend slot={slot} slotLabel={slotLabel} />
+          <DeltaLegend slot={slot} slotLabel={slotLabel} bounds={bounds} />
           <div className="build-table-wrapper">
             <table className="build-candidates">
               <thead>
@@ -137,6 +139,7 @@ export function BuildCandidateTable({
                           <DeltaChip
                             sourceRank={rank}
                             slot={slot}
+                            bounds={bounds}
                             sourceLabel={source.label}
                             slotLabel={slotLabel}
                             beyondDepth={

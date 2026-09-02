@@ -8,6 +8,7 @@ import {
   type PositionFilter,
 } from '../../lib/formats'
 import { DeltaChip } from '../../components/DeltaChip'
+import { PICK_BOUNDS } from '../../lib/deltaBuckets'
 import { PositionTag } from '../players/PositionTag'
 import '../players/players.css'
 import './draft.css'
@@ -209,6 +210,7 @@ export function DraftPlayerPool({
                             row.adp !== null ? Math.round(row.adp) : null
                           }
                           slot={nextPickNumber}
+                          bounds={PICK_BOUNDS}
                           sourceLabel="ADP"
                           slotLabel={`pick ${nextPickNumber}`}
                         />
@@ -217,6 +219,7 @@ export function DraftPlayerPool({
                         <DeltaChip
                           sourceRank={row.unranked ? null : row.rank}
                           slot={nextPickNumber}
+                          bounds={PICK_BOUNDS}
                           sourceLabel="Your rank"
                           slotLabel={`pick ${nextPickNumber}`}
                         />

@@ -48,11 +48,29 @@ describe('DraftBoard', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows an empty pick label for unfilled cells as round.slot', () => {
+  it('labels every cell with its round pick and overall pick', () => {
     render(<DraftBoard status={makeStatus()} />)
 
-    expect(screen.getByText('1.1')).toBeInTheDocument()
-    expect(screen.getByText('2.4')).toBeInTheDocument()
+    expect(screen.getByText('1.1 (1)')).toBeInTheDocument()
+    expect(screen.getByText('1.4 (4)')).toBeInTheDocument()
+  })
+
+  it('reverses the pick order in even rounds', () => {
+    // 4 teams. A team holds its column all the way down the board, so in
+    // round 2 the leftmost column is the round's *last* pick -- it used to be
+    // labelled 2.1, which is the wrong end of the snake.
+    render(<DraftBoard status={makeStatus()} />)
+
+    const cellFor = (text: string) => screen.getByText(text).closest('td')
+    const row2 = screen.getAllByRole('row')[2]
+    const labels = Array.from(row2.querySelectorAll('td')).map(
+      (td) => td.textContent,
+    )
+
+    expect(labels).toEqual(['2.4 (8)', '2.3 (7)', '2.2 (6)', '2.1 (5)'])
+    // ...and the overall numbering runs continuously round to round
+    expect(cellFor('1.4 (4)')).not.toBeNull()
+    expect(cellFor('2.1 (5)')).not.toBeNull()
   })
 
   it('shows a picked player in the cell matching their round/slot', () => {
@@ -82,7 +100,8 @@ describe('DraftBoard', () => {
 
     render(<DraftBoard status={status} />)
 
-    const currentCell = screen.getByText('2.3').closest('td')
+    // Round 2, slot 3 of 4 is the round's second pick -- overall 6.
+    const currentCell = screen.getByText('2.2 (6)').closest('td')
     expect(currentCell).toHaveClass('current')
   })
 

@@ -119,6 +119,26 @@
   min-width: 0;
 }
 
+.draft-board-pick-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.draft-board-pick-top .draft-board-player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draft-board-pick-no {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .draft-board-player-meta {
   color: var(--text-muted);
   font-size: 10px;
@@ -126,23 +146,55 @@
   text-overflow: ellipsis;
 }
 
-/* Position colour on the cell, which is what makes a board scannable without
-   reading any of it. Kept to a tint so the name stays the loudest thing. */
+/* Position colour on the cell -- what makes a board scannable without reading
+   any of it. Solid light fills with dark ink rather than a tint of the hue on
+   the dark surface: a 16% tint read as mud, which is exactly why Sleeper's
+   board is legible and the first version of this one wasn't.
+ *
+ * Validated with the dataviz skill's validate_palette.js, all-pairs, against
+ * the dark page surface (#0d0d0d):
+ *   normal-vision floor  PASS  worst pair dE 17.0 (>=15)
+ *   chroma floor         PASS
+ *   contrast vs surface  PASS  all >= 3:1
+ *   CVD separation       WARN  worst pair dE 6.0 deutan, in the 6-8 floor band
+ *
+ * That CVD warn is legal here because it never carries identity alone: every
+ * cell prints the position as text ("RB - DET"), which is the direct-label
+ * relief the rule asks for. Sampling Sleeper's own colours failed far harder
+ * (green vs blue at dE 9.8 for *normal* vision, below the hard floor of 15),
+ * so these are its character with the hues pushed apart until they measured.
+ *
+ * The lightness-band check fails by design: that band governs series marks on
+ * a dark surface, and these are filled labels read as dark-on-light. The
+ * governing check for them is text contrast on the fill, which is 7.3:1 at
+ * worst -- see the ink token below. */
 .draft-board-cell.pos-QB {
-  background: color-mix(in srgb, #3987e5 16%, transparent);
+  background: #dd7bd0;
 }
 .draft-board-cell.pos-RB {
-  background: color-mix(in srgb, #eb6834 16%, transparent);
+  background: #34c9a4;
 }
 .draft-board-cell.pos-WR {
-  background: color-mix(in srgb, #1baf7a 16%, transparent);
+  background: #8ab4f8;
 }
 .draft-board-cell.pos-TE {
-  background: color-mix(in srgb, #eda100 16%, transparent);
+  background: #ffbf4d;
 }
 .draft-board-cell.pos-K,
 .draft-board-cell.pos-DEF {
-  background: color-mix(in srgb, #898781 16%, transparent);
+  background: #c3c2b7;
+}
+
+/* Dark ink on every filled cell: 9.3:1 on blue, 9.4:1 on green, 12.0:1 on
+   amber, 7.3:1 on orchid. */
+.draft-board-cell[class*='pos-'] {
+  color: #0b0b0b;
+}
+
+.draft-board-cell[class*='pos-'] .draft-board-player-meta,
+.draft-board-cell[class*='pos-'] .draft-board-pick-no {
+  color: #0b0b0b;
+  opacity: 0.7;
 }
 
 /* An empty future pick needs to hold its place, not a full row's worth of it. */
@@ -173,6 +225,8 @@
 
 .draft-board-pick-label {
   color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .draft-board-player-name {

@@ -72,7 +72,8 @@ describe('DraftBoard', () => {
 
     render(<DraftBoard status={status} />)
 
-    expect(screen.getByText('Josh Allen')).toBeInTheDocument()
+    // The board abbreviates -- truncating to "Jos…" lost the identifying part.
+    expect(screen.getByText('J. Allen')).toBeInTheDocument()
     expect(screen.queryByText('1.1')).not.toBeInTheDocument()
   })
 

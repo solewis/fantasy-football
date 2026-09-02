@@ -1,5 +1,5 @@
 import type { DraftStatus, PickRow } from '../../api/draft'
-import { PositionTag } from '../players/PositionTag'
+import { abbreviateName } from '../../lib/playerName'
 import './draft.css'
 
 interface DraftBoardProps {
@@ -43,6 +43,7 @@ export function DraftBoard({ status }: DraftBoardProps) {
                   round === current_round && slot === current_slot
                 const classNames = [
                   'draft-board-cell',
+                  pick?.position ? `pos-${pick.position}` : '',
                   isCurrent && 'current',
                   slot === draft.my_slot && 'my-team',
                 ]
@@ -52,12 +53,14 @@ export function DraftBoard({ status }: DraftBoardProps) {
                 return (
                   <td key={slot} className={classNames}>
                     {pick ? (
-                      <>
-                        <PositionTag position={pick.position} />
+                      <span className="draft-board-pick" title={pick.name}>
                         <span className="draft-board-player-name">
-                          {pick.name}
+                          {abbreviateName(pick.name)}
                         </span>
-                      </>
+                        <span className="draft-board-player-meta">
+                          {pick.position ?? '—'} · {pick.team ?? '—'}
+                        </span>
+                      </span>
                     ) : (
                       <span className="draft-board-pick-label">
                         {round}.{slot}

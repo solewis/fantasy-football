@@ -78,9 +78,14 @@
 .draft-board-wrapper {
   border: 1px solid var(--border);
   border-radius: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   width: 100%;
   box-sizing: border-box;
+  /* The board used to run the full 15 rounds down the page, pushing the player
+     list below the fold -- the two things you need at once. It scrolls inside
+     itself now, and starts scrolled to the live round. */
+  max-height: 42vh;
+  overflow: auto;
 }
 
 .draft-board {
@@ -92,19 +97,64 @@
 .draft-board th,
 .draft-board td {
   border: 1px solid var(--border);
-  padding: 14px 8px;
-  font-size: 12px;
+  padding: 3px 6px;
+  font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Header stays put while the board scrolls under it. */
 .draft-board th {
-  background: var(--surface-1);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.draft-board-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.draft-board-player-meta {
+  color: var(--text-muted);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Position colour on the cell, which is what makes a board scannable without
+   reading any of it. Kept to a tint so the name stays the loudest thing. */
+.draft-board-cell.pos-QB {
+  background: color-mix(in srgb, #3987e5 16%, transparent);
+}
+.draft-board-cell.pos-RB {
+  background: color-mix(in srgb, #eb6834 16%, transparent);
+}
+.draft-board-cell.pos-WR {
+  background: color-mix(in srgb, #1baf7a 16%, transparent);
+}
+.draft-board-cell.pos-TE {
+  background: color-mix(in srgb, #eda100 16%, transparent);
+}
+.draft-board-cell.pos-K,
+.draft-board-cell.pos-DEF {
+  background: color-mix(in srgb, #898781 16%, transparent);
+}
+
+/* An empty future pick needs to hold its place, not a full row's worth of it. */
+.draft-board-cell:has(.draft-board-pick-label) {
+  padding: 2px 6px;
+}
+
+.draft-board th {
+  background: var(--surface-2, #1e1e1c);
   color: var(--text-secondary);
   font-weight: 600;
   text-align: left;
-  padding: 6px 8px;
+  padding: 5px 6px;
 }
 
 .draft-board th.my-team {

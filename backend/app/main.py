@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.corpus import router as corpus_router
 from app.api.draft import router as draft_router
 from app.api.league import router as league_router
 from app.api.players import router as players_router
@@ -30,6 +31,7 @@ app.include_router(ranks_router)
 app.include_router(rank_datasets_router)
 app.include_router(draft_router)
 app.include_router(league_router)
+app.include_router(corpus_router)
 
 
 @app.get("/health")

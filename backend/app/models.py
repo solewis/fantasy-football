@@ -346,3 +346,89 @@ class DraftQueueEntry(Base):
     draft_id: Mapped[int] = mapped_column(ForeignKey("drafts.id"), index=True)
     platform_player_id: Mapped[str] = mapped_column(String)
     order: Mapped[int] = mapped_column(Integer)
+
+
+class CorpusDocument(Base):
+    """One piece of writing by an analyst you follow -- an article, a season
+    guide, a podcast transcript.
+
+    Stored platform-agnostically for the same reason RankDataset is: the
+    mentions hanging off it are keyed by normalized name and resolved to a
+    platform's player ids on read, so one imported corpus serves a Sleeper and
+    an ESPN league alike.
+
+    `raw_text` is kept after chunking (RankDataset's call, same reasoning): the
+    chunker will get better, and re-chunking shouldn't mean re-importing.
+    """
+
+    __tablename__ = "corpus_documents"
+    __table_args__ = (UniqueConstraint("analyst", "title", name="uq_corpus_document_title"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Free text, not a FK to an analysts table -- there's one analyst today and
+    # a second would still not need its own table, just a different string.
+    analyst: Mapped[str] = mapped_column(String, index=True)
+    title: Mapped[str] = mapped_column(String)
+    # "article" | "guide" | "rankings" | "transcript". Free text, matching
+    # NameMapping.source_type's call: the set is open and never joined on.
+    kind: Mapped[str] = mapped_column(String, index=True)
+    # When the analyst published it, not when you imported it -- the whole
+    # point of storing it. A 2023 take and a 2026 take on the same player are
+    # different claims, and the model has to be able to tell them apart.
+    # Nullable because undated scrapes happen, and a null date is far better
+    # than a guessed one.
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    source_filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    raw_text: Mapped[str] = mapped_column(Text)
+    imported_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class CorpusChunk(Base):
+    """A passage of a document, sized to be retrieved and quoted on its own.
+
+    Chunks are the unit of retrieval: a pick-time prompt pulls the handful of
+    chunks that mention the players actually on the board, so a chunk has to
+    carry enough context to stand alone when quoted out of order.
+    """
+
+    __tablename__ = "corpus_chunks"
+    __table_args__ = (UniqueConstraint("document_id", "chunk_index", name="uq_corpus_chunk_index"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("corpus_documents.id"), index=True)
+    chunk_index: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    # Offset into the parent's raw_text, so a quote can be traced back to where
+    # it actually appears rather than just to which chunk it landed in.
+    char_start: Mapped[int] = mapped_column(Integer)
+
+
+class ChunkMention(Base):
+    """A player named in a chunk, keyed by normalized name rather than by
+    platform player id.
+
+    Deliberately platform-free, exactly like RankDatasetEntry: the scan needs a
+    player list to *detect* a name, but what it records is just the name it
+    found, which resolves against Sleeper's or ESPN's list equally well on read
+    (app/corpus/retrieve.py).
+    """
+
+    __tablename__ = "chunk_mentions"
+    __table_args__ = (
+        UniqueConstraint("chunk_id", "normalized_name", name="uq_chunk_mention"),
+        Index("ix_chunk_mention_name_chunk", "normalized_name", "chunk_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chunk_id: Mapped[int] = mapped_column(ForeignKey("corpus_chunks.id"), index=True)
+    # As it appeared in the prose ("Marvin Harrison Jr.", "CMC") -- kept so a
+    # bad detection is diagnosable without re-reading the chunk.
+    source_name_raw: Mapped[str] = mapped_column(String)
+    normalized_name: Mapped[str] = mapped_column(String, index=True)
+    # How the scanner found it: "full_name", "surname", or "alias". A surname
+    # hit is a weaker signal than a full-name hit and the retrieval layer is
+    # allowed to treat it as such.
+    detected_by: Mapped[str] = mapped_column(String)
+    # Times this name appears in the chunk. A passage that names a player once
+    # in a list is not a passage about that player.
+    occurrences: Mapped[int] = mapped_column(Integer, default=1)

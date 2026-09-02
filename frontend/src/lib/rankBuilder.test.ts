@@ -59,13 +59,17 @@ describe('undo', () => {
 
   it('restores tier breaks too', () => {
     let state = build('a', 'b')
-    state = buildReducer(state, { type: 'toggleTierBreak', afterPlayerId: 'a' })
-    const withBreak = state.breakAfterIds
+    state = buildReducer(state, {
+      type: 'setTierBreak',
+      afterPlayerId: 'a',
+      strength: 'minor',
+    })
+    const withBreak = state.breaks
     state = buildReducer(state, { type: 'pick', playerId: 'c' })
 
     const undone = buildReducer(state, { type: 'undo' })
 
-    expect(undone.breakAfterIds).toEqual(withBreak)
+    expect(undone.breaks).toEqual(withBreak)
   })
 
   it('caps its history', () => {
@@ -84,44 +88,144 @@ describe('tier breaks', () => {
     // above a break shifts every index below it, and undo restores the order
     // but not shifted indices.
     let state = build('a', 'b', 'c')
-    state = buildReducer(state, { type: 'toggleTierBreak', afterPlayerId: 'b' })
+    state = buildReducer(state, {
+      type: 'setTierBreak',
+      afterPlayerId: 'b',
+      strength: 'major',
+    })
     state = buildReducer(state, { type: 'setInsertAt', index: 0 })
     state = buildReducer(state, { type: 'pick', playerId: 'x' })
 
     expect(state.order).toEqual(['x', 'a', 'b', 'c'])
-    expect(state.breakAfterIds).toEqual(['b'])
-    expect(tiersForOrder(state.order, state.breakAfterIds)).toEqual([
-      1, 1, 1, 2,
-    ])
+    expect(state.breaks).toEqual({ b: 'major' })
+    expect(tiersForOrder(state.order, state.breaks)).toEqual([1, 1, 1, 2])
   })
 
   it('drop when their player is removed', () => {
     let state = build('a', 'b')
-    state = buildReducer(state, { type: 'toggleTierBreak', afterPlayerId: 'a' })
+    state = buildReducer(state, {
+      type: 'setTierBreak',
+      afterPlayerId: 'a',
+      strength: 'minor',
+    })
 
     state = buildReducer(state, { type: 'remove', playerId: 'a' })
 
-    expect(state.breakAfterIds).toEqual([])
+    expect(state.breaks).toEqual({})
   })
 
-  it('toggle off', () => {
+  it('clear when set to null', () => {
     let state = build('a')
-    state = buildReducer(state, { type: 'toggleTierBreak', afterPlayerId: 'a' })
-    state = buildReducer(state, { type: 'toggleTierBreak', afterPlayerId: 'a' })
+    state = buildReducer(state, {
+      type: 'setTierBreak',
+      afterPlayerId: 'a',
+      strength: 'minor',
+    })
+    state = buildReducer(state, {
+      type: 'setTierBreak',
+      afterPlayerId: 'a',
+      strength: null,
+    })
 
-    expect(state.breakAfterIds).toEqual([])
+    expect(state.breaks).toEqual({})
+  })
+
+  it('carry a weight, and both weights start a new tier', () => {
+    // The weights describe how big the drop is, not whether one happened.
+    let state = build('a', 'b', 'c')
+    state = buildReducer(state, {
+      type: 'setTierBreak',
+      afterPlayerId: 'a',
+      strength: 'minor',
+    })
+    state = buildReducer(state, {
+      type: 'setTierBreak',
+      afterPlayerId: 'b',
+      strength: 'major',
+    })
+
+    expect(state.breaks).toEqual({ a: 'minor', b: 'major' })
+    expect(tiersForOrder(state.order, state.breaks)).toEqual([1, 2, 3])
+  })
+})
+
+describe('flags', () => {
+  it('set, change and clear', () => {
+    let state = build('a')
+
+    state = buildReducer(state, {
+      type: 'setFlag',
+      playerId: 'a',
+      flag: 'target',
+    })
+    expect(state.flags).toEqual({ a: 'target' })
+
+    state = buildReducer(state, {
+      type: 'setFlag',
+      playerId: 'a',
+      flag: 'fade',
+    })
+    expect(state.flags).toEqual({ a: 'fade' })
+
+    state = buildReducer(state, { type: 'setFlag', playerId: 'a', flag: null })
+    expect(state.flags).toEqual({})
+  })
+
+  it('drop when their player is removed', () => {
+    let state = build('a', 'b')
+    state = buildReducer(state, {
+      type: 'setFlag',
+      playerId: 'a',
+      flag: 'target',
+    })
+
+    state = buildReducer(state, { type: 'remove', playerId: 'a' })
+
+    expect(state.flags).toEqual({})
+  })
+
+  it('survive a reorder', () => {
+    let state = build('a', 'b', 'c')
+    state = buildReducer(state, {
+      type: 'setFlag',
+      playerId: 'c',
+      flag: 'target',
+    })
+
+    state = buildReducer(state, {
+      type: 'reorder',
+      draggedId: 'c',
+      hoveredId: 'a',
+      insertAfter: false,
+    })
+
+    expect(state.order).toEqual(['c', 'a', 'b'])
+    expect(state.flags).toEqual({ c: 'target' })
+  })
+
+  it('are restored by undo', () => {
+    let state = build('a')
+    state = buildReducer(state, {
+      type: 'setFlag',
+      playerId: 'a',
+      flag: 'target',
+    })
+
+    state = buildReducer(state, { type: 'undo' })
+
+    expect(state.flags).toEqual({})
   })
 })
 
 describe('tiersForOrder', () => {
   it('is all null with no breaks', () => {
-    expect(tiersForOrder(['a', 'b'], [])).toEqual([null, null])
+    expect(tiersForOrder(['a', 'b'], {})).toEqual([null, null])
   })
 
   it('numbers tiers from the breaks', () => {
-    expect(tiersForOrder(['a', 'b', 'c', 'd'], ['a', 'c'])).toEqual([
-      1, 2, 2, 3,
-    ])
+    expect(
+      tiersForOrder(['a', 'b', 'c', 'd'], { a: 'major', c: 'minor' }),
+    ).toEqual([1, 2, 2, 3])
   })
 })
 

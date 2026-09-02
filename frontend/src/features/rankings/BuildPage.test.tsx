@@ -221,29 +221,69 @@ describe('BuildPage', () => {
     })
   })
 
-  it('exposes a visible per-row tier break toggle', async () => {
+  it('cycles a per-row tier break through none, small and big', async () => {
     // It used to be opacity:0 until you hovered the row, which meant nobody
-    // found it.
+    // found it. One button covers both weights rather than needing a menu.
     await renderBuild()
     fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
     await waitFor(() => {
       expect(screen.getByText('My list (1)')).toBeInTheDocument()
     })
 
-    const toggle = screen.getByRole('button', {
-      name: /Add tier break after Ja'Marr Chase/,
-    })
-    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    const toggle = () =>
+      screen.getByRole('button', { name: /Tier break after Ja'Marr Chase/ })
+    expect(toggle().getAttribute('aria-label')).toContain('currently none')
 
-    fireEvent.click(toggle)
+    fireEvent.click(toggle())
+    await waitFor(() => {
+      expect(toggle().getAttribute('aria-label')).toContain('currently minor')
+    })
+
+    fireEvent.click(toggle())
+    await waitFor(() => {
+      expect(toggle().getAttribute('aria-label')).toContain('currently major')
+    })
+    expect(screen.getByText(/big drop/)).toBeInTheDocument()
+
+    fireEvent.click(toggle())
+    await waitFor(() => {
+      expect(toggle().getAttribute('aria-label')).toContain('currently none')
+    })
+  })
+
+  it('marks a player as a target and saves the flag', async () => {
+    const fetchMock = mockBackend()
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Target Ja'Marr/ }))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Clear target on Ja'Marr/ }),
+      ).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', {
-          name: /Remove tier break after Ja'Marr Chase/,
-        }),
-      ).toHaveAttribute('aria-pressed', 'true')
+        fetchMock.mock.calls.some(
+          ([, init]) => (init as RequestInit)?.method === 'PUT',
+        ),
+      ).toBe(true)
     })
+    const put = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit)?.method === 'PUT',
+    )
+    if (!put) throw new Error('no save request was made')
+    const body = JSON.parse((put[1] as RequestInit).body as string) as {
+      entries: { flag: string | null }[]
+    }
+    expect(body.entries[0].flag).toBe('target')
   })
 
   it('saves the tiers implied by the breaks', async () => {

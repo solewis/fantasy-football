@@ -17,6 +17,13 @@ OVERALL = "overall"
 BUILD_POSITIONS = ("QB", "RB", "WR", "TE")
 SCOPES = (OVERALL, *BUILD_POSITIONS)
 
+# How hard the drop-off is after a player. Both weights start a new tier; they
+# differ only in how sharp the cliff is, which is the thing you actually want
+# to see on the clock.
+BREAK_STRENGTHS = ("major", "minor")
+# A personal lean that rank order can't express on its own.
+FLAGS = ("target", "fade")
+
 
 class RankSetError(ValueError):
     """A rank-set action that can't be satisfied (duplicate name, unknown set, ...)."""
@@ -31,6 +38,8 @@ class RankEntryInput:
 
     platform_player_id: str
     tier: int | None = None
+    break_after: str | None = None
+    flag: str | None = None
 
 
 def list_rank_sets(
@@ -205,6 +214,8 @@ def list_ranks(session: Session, rank_set_id: int) -> list[dict]:
             "team": player.team,
             "adp": adp,
             "tier": entry.tier,
+            "break_after": entry.break_after,
+            "flag": entry.flag,
         }
         for entry, player, adp in query.all()
     ]
@@ -219,6 +230,12 @@ def replace_ranks(session: Session, rank_set_id: int, entries: list[RankEntryInp
     grouping over this exact order, so saving them apart from it would let the
     two drift.
     """
+    for entry in entries:
+        if entry.break_after is not None and entry.break_after not in BREAK_STRENGTHS:
+            raise RankSetError(f"Unknown tier break strength {entry.break_after!r}")
+        if entry.flag is not None and entry.flag not in FLAGS:
+            raise RankSetError(f"Unknown flag {entry.flag!r}")
+
     session.query(RankEntry).filter_by(rank_set_id=rank_set_id).delete()
     for index, entry in enumerate(entries):
         session.add(
@@ -227,6 +244,8 @@ def replace_ranks(session: Session, rank_set_id: int, entries: list[RankEntryInp
                 platform_player_id=entry.platform_player_id,
                 rank=index + 1,
                 tier=entry.tier,
+                break_after=entry.break_after,
+                flag=entry.flag,
             )
         )
     session.commit()

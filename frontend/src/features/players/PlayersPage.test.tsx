@@ -19,6 +19,8 @@ const samplePlayers: PlayerRow[] = [
     team: 'CIN',
     adp: 1.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
   {
     rank: 2,
@@ -28,6 +30,8 @@ const samplePlayers: PlayerRow[] = [
     team: 'ATL',
     adp: 2.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
 ]
 

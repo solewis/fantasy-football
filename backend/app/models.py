@@ -151,6 +151,14 @@ class RankEntry(Base):
     # over the existing order, never a second ordering -- rank stays dense and
     # contiguous either way.
     tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # "major" | "minor" | None -- whether a tier break follows this player, and
+    # how big the drop-off is. Stored as the authoring intent rather than
+    # derived from `tier`, because the two weights produce the same tier
+    # numbering and only differ in how hard the cliff is.
+    break_after: Mapped[str | None] = mapped_column(String, nullable=True)
+    # "target" | "fade" | None -- a personal lean on this player that rank
+    # order alone can't express ("I'll reach for him", "I'd rather not").
+    flag: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class RankDataset(Base):

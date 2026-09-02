@@ -241,7 +241,43 @@ li:hover > .build-insert-here,
 .build-tier-break::after {
   content: '';
   flex: 1;
-  border-top: 2px dashed var(--border, #33322f);
+  border-top: 1px dashed var(--border, #33322f);
+}
+
+/* A big break has to look like a cliff, not a slightly different dash. */
+.build-tier-break.major {
+  color: var(--text-secondary, #c3c2b7);
+}
+
+.build-tier-break.major::after {
+  border-top: 3px double var(--text-muted, #898781);
+}
+
+.build-break-toggle.active.major {
+  color: var(--text-primary, #fff);
+}
+
+/* Same blue/red poles as the delta chips: "good for me" and "not for me"
+   should read identically everywhere. The glyph and the accessible name carry
+   it too -- colour is never alone. */
+.build-flag-target.active {
+  color: #3987e5;
+  border-color: currentColor;
+  opacity: 1;
+}
+
+.build-flag-fade.active {
+  color: #e66767;
+  border-color: currentColor;
+  opacity: 1;
+}
+
+.build-working-row.flag-fade .player-name {
+  opacity: 0.6;
+}
+
+.build-working-row.flag-target .player-name {
+  font-weight: 600;
 }
 
 .build-end-zone {

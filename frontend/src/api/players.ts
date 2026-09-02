@@ -5,9 +5,12 @@ export interface PlayerRow {
   position: string | null
   team: string | null
   adp: number
-  /** Always null -- ADP has no tiers. Present so a PlayerRow can stand in for
-   * a RankRow wherever the frontend swaps an ADP list for a saved one. */
+  /** Always null -- ADP has no tiers, breaks or flags. Present so a PlayerRow
+   * can stand in for a RankRow wherever the frontend swaps an ADP list for a
+   * saved one. */
   tier: null
+  break_after: null
+  flag: null
 }
 
 export interface FetchPlayersParams {

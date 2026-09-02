@@ -379,3 +379,49 @@ def test_resolve_rank_set_returns_none_when_only_positional_sets_exist():
     make_set(session, name="My WRs", scope="WR")
 
     assert ranks.resolve_rank_set(session, "sleeper", "2026", "half_ppr") is None
+
+
+def test_replace_ranks_round_trips_break_strength_and_flags():
+    session = make_session()
+    seed_players(session)
+    rank_set = make_set(session, name="Main")
+
+    ranks.replace_ranks(
+        session,
+        rank_set.id,
+        [
+            ranks.RankEntryInput(platform_player_id="3", tier=1, break_after="major"),
+            ranks.RankEntryInput(platform_player_id="1", tier=2, flag="target"),
+            ranks.RankEntryInput(platform_player_id="2", tier=2, flag="fade"),
+        ],
+    )
+
+    rows = ranks.list_ranks(session, rank_set.id)
+    assert [r["break_after"] for r in rows] == ["major", None, None]
+    assert [r["flag"] for r in rows] == [None, "target", "fade"]
+
+
+def test_replace_ranks_rejects_an_unknown_break_strength():
+    session = make_session()
+    seed_players(session)
+    rank_set = make_set(session, name="Main")
+
+    with pytest.raises(ranks.RankSetError):
+        ranks.replace_ranks(
+            session,
+            rank_set.id,
+            [ranks.RankEntryInput(platform_player_id="1", break_after="huge")],
+        )
+
+
+def test_replace_ranks_rejects_an_unknown_flag():
+    session = make_session()
+    seed_players(session)
+    rank_set = make_set(session, name="Main")
+
+    with pytest.raises(ranks.RankSetError):
+        ranks.replace_ranks(
+            session,
+            rank_set.id,
+            [ranks.RankEntryInput(platform_player_id="1", flag="maybe")],
+        )

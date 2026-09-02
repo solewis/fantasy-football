@@ -1,16 +1,27 @@
 /** Build-state reducer: the order you're constructing, plus undo.
  *
- * Tier breaks are keyed by the player id they follow, never by index. An
- * insert above a break shifts every index below it, and undo restores the
- * order but not shifted indices -- index-keyed breaks drift silently. Keying
- * by id is immune to both, and removing a player naturally drops its break.
+ * Tier breaks and flags are keyed by the player id they attach to, never by
+ * index. An insert above a break shifts every index below it, and undo
+ * restores the order but not shifted indices -- index-keyed marks drift
+ * silently. Keying by id is immune to both, and removing a player naturally
+ * drops its marks.
  */
 
 import { reorderList } from './reorder'
 
+/** How hard the drop-off is after a player. Both start a new tier; they differ
+ * in how sharp the cliff is, which is what you actually want to see on the
+ * clock. */
+export type BreakStrength = 'major' | 'minor'
+
+/** A personal lean that rank order alone can't express -- "I'll reach for
+ * him", "I'd rather not". */
+export type PlayerFlag = 'target' | 'fade'
+
 export interface BuildSnapshot {
   order: string[]
-  breakAfterIds: string[]
+  breaks: Record<string, BreakStrength>
+  flags: Record<string, PlayerFlag>
 }
 
 export interface BuildState extends BuildSnapshot {
@@ -29,10 +40,26 @@ export type BuildAction =
       hoveredId: string | null
       insertAfter: boolean
     }
-  | { type: 'toggleTierBreak'; afterPlayerId: string }
+  | {
+      type: 'setTierBreak'
+      afterPlayerId: string
+      /** null clears the break. */
+      strength: BreakStrength | null
+    }
+  | {
+      type: 'setFlag'
+      playerId: string
+      /** null clears the flag. */
+      flag: PlayerFlag | null
+    }
   | { type: 'setInsertAt'; index: number | null }
   | { type: 'undo' }
-  | { type: 'reset'; order: string[]; breakAfterIds?: string[] }
+  | {
+      type: 'reset'
+      order: string[]
+      breaks?: Record<string, BreakStrength>
+      flags?: Record<string, PlayerFlag>
+    }
   | { type: 'markSaved' }
 
 /** Snapshots rather than inverse operations: for a few hundred string ids the
@@ -43,9 +70,10 @@ export const MAX_UNDO = 50
 
 export function initialBuildState(
   order: string[] = [],
-  breakAfterIds: string[] = [],
+  breaks: Record<string, BreakStrength> = {},
+  flags: Record<string, PlayerFlag> = {},
 ): BuildState {
-  return { order, breakAfterIds, insertAt: null, past: [], dirty: false }
+  return { order, breaks, flags, insertAt: null, past: [], dirty: false }
 }
 
 export function nextSlot(state: BuildState): number {
@@ -53,7 +81,7 @@ export function nextSlot(state: BuildState): number {
 }
 
 function snapshot(state: BuildState): BuildSnapshot {
-  return { order: state.order, breakAfterIds: state.breakAfterIds }
+  return { order: state.order, breaks: state.breaks, flags: state.flags }
 }
 
 function push(state: BuildState, next: BuildSnapshot): BuildState {
@@ -76,7 +104,7 @@ export function buildReducer(
       const order = [...state.order]
       order.splice(at, 0, action.playerId)
       return {
-        ...push(state, { order, breakAfterIds: state.breakAfterIds }),
+        ...push(state, { ...snapshot(state), order }),
         // Stepping the insertion point keeps a run of inserts going in order
         // rather than reversing them.
         insertAt: state.insertAt === null ? null : at + 1,
@@ -85,11 +113,12 @@ export function buildReducer(
 
     case 'remove': {
       if (!state.order.includes(action.playerId)) return state
+      const { [action.playerId]: _break, ...breaks } = state.breaks
+      const { [action.playerId]: _flag, ...flags } = state.flags
       return push(state, {
         order: state.order.filter((id) => id !== action.playerId),
-        breakAfterIds: state.breakAfterIds.filter(
-          (id) => id !== action.playerId,
-        ),
+        breaks,
+        flags,
       })
     }
 
@@ -110,17 +139,21 @@ export function buildReducer(
         const unchanged = next.every((id, i) => id === state.order[i])
         if (unchanged) return state
       }
-      return push(state, { order: next, breakAfterIds: state.breakAfterIds })
+      return push(state, { ...snapshot(state), order: next })
     }
 
-    case 'toggleTierBreak': {
-      const has = state.breakAfterIds.includes(action.afterPlayerId)
-      return push(state, {
-        order: state.order,
-        breakAfterIds: has
-          ? state.breakAfterIds.filter((id) => id !== action.afterPlayerId)
-          : [...state.breakAfterIds, action.afterPlayerId],
-      })
+    case 'setTierBreak': {
+      const breaks = { ...state.breaks }
+      if (action.strength === null) delete breaks[action.afterPlayerId]
+      else breaks[action.afterPlayerId] = action.strength
+      return push(state, { ...snapshot(state), breaks })
+    }
+
+    case 'setFlag': {
+      const flags = { ...state.flags }
+      if (action.flag === null) delete flags[action.playerId]
+      else flags[action.playerId] = action.flag
+      return push(state, { ...snapshot(state), flags })
     }
 
     case 'setInsertAt':
@@ -138,24 +171,26 @@ export function buildReducer(
     }
 
     case 'reset':
-      return initialBuildState(action.order, action.breakAfterIds ?? [])
+      return initialBuildState(action.order, action.breaks, action.flags)
 
     case 'markSaved':
       return { ...state, dirty: false }
   }
 }
 
-/** Tier numbers implied by the break positions, one per player in order. */
+/** Tier numbers implied by the break positions, one per player in order.
+ *
+ * Both break weights increment the tier -- they describe how big the drop is,
+ * not whether one happened. */
 export function tiersForOrder(
   order: string[],
-  breakAfterIds: string[],
+  breaks: Record<string, BreakStrength>,
 ): (number | null)[] {
-  if (breakAfterIds.length === 0) return order.map(() => null)
-  const breaks = new Set(breakAfterIds)
+  if (Object.keys(breaks).length === 0) return order.map(() => null)
   let tier = 1
   return order.map((id) => {
     const current = tier
-    if (breaks.has(id)) tier += 1
+    if (breaks[id]) tier += 1
     return current
   })
 }

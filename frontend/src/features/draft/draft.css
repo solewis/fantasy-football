@@ -515,3 +515,39 @@
   color: #d03b3b;
   font-size: 13px;
 }
+
+/* Marks carried through from the rankings builder. A tier break is drawn on
+   the row *below* the player it follows, so a divider never trails off the
+   bottom of a filtered list. */
+.draft-pool-table tr.tier-break-minor > td {
+  border-top: 1px solid var(--border-strong, #4a4945);
+}
+
+.draft-pool-table tr.tier-break-major > td {
+  border-top: 3px double var(--text-muted, #898781);
+}
+
+.draft-pool-flag {
+  margin-left: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+}
+
+/* Deliberately the same blue/red poles as the builder's delta chips, so
+   "good for me" and "not for me" read the same everywhere in the app. The
+   word is always present, so colour is never the only channel. */
+.draft-pool-flag.target {
+  color: #3987e5;
+}
+
+.draft-pool-flag.fade {
+  color: #e66767;
+}
+
+.draft-pool-table tr.flag-fade .player-name {
+  opacity: 0.65;
+}

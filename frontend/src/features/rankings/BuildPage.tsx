@@ -200,12 +200,14 @@ export function BuildPage({ platform, format }: BuildPageProps) {
         setRankSets((sets) => [...sets, created])
         setTargetSetId(created.id)
       }
-      const tiers = tiersForOrder(state.order, state.breakAfterIds)
+      const tiers = tiersForOrder(state.order, state.breaks)
       const result = await saveRanksForSet(
         setId,
         state.order.map((id, i) => ({
           platform_player_id: id,
           tier: tiers[i],
+          break_after: state.breaks[id] ?? null,
+          flag: state.flags[id] ?? null,
         })),
       )
       dispatch({ type: 'markSaved' })
@@ -274,14 +276,29 @@ export function BuildPage({ platform, format }: BuildPageProps) {
           type="button"
           onClick={() =>
             dispatch({
-              type: 'toggleTierBreak',
+              type: 'setTierBreak',
               afterPlayerId: state.order[state.order.length - 1],
+              strength: 'minor',
             })
           }
           disabled={state.order.length === 0}
           title="Start a new tier after the last player you picked"
         >
           + Tier break
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            dispatch({
+              type: 'setTierBreak',
+              afterPlayerId: state.order[state.order.length - 1],
+              strength: 'major',
+            })
+          }
+          disabled={state.order.length === 0}
+          title="A hard drop-off after the last player you picked"
+        >
+          + Big break
         </button>
         <button
           type="button"
@@ -314,7 +331,8 @@ export function BuildPage({ platform, format }: BuildPageProps) {
 
         <BuildWorkingList
           order={state.order}
-          breakAfterIds={state.breakAfterIds}
+          breaks={state.breaks}
+          flags={state.flags}
           insertAt={state.insertAt}
           playersById={playersById}
           scope={scope}
@@ -322,8 +340,11 @@ export function BuildPage({ platform, format }: BuildPageProps) {
           onReorder={(draggedId, hoveredId, insertAfter) =>
             dispatch({ type: 'reorder', draggedId, hoveredId, insertAfter })
           }
-          onToggleTierBreak={(afterPlayerId) =>
-            dispatch({ type: 'toggleTierBreak', afterPlayerId })
+          onSetTierBreak={(afterPlayerId, strength) =>
+            dispatch({ type: 'setTierBreak', afterPlayerId, strength })
+          }
+          onSetFlag={(playerId, flag) =>
+            dispatch({ type: 'setFlag', playerId, flag })
           }
           onSetInsertAt={(index) => dispatch({ type: 'setInsertAt', index })}
         />

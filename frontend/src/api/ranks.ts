@@ -7,6 +7,10 @@ export interface RankRow {
   adp: number | null
   /** Tier this player falls in, or null when the set has no tiers. */
   tier: number | null
+  /** Whether a tier break follows this player, and how hard the drop is. */
+  break_after: 'major' | 'minor' | null
+  /** A personal lean this rank order can't express on its own. */
+  flag: 'target' | 'fade' | null
 }
 
 export interface RanksScope {
@@ -43,6 +47,8 @@ export interface CreateRankSetParams {
 export interface RankEntryInput {
   platform_player_id: string
   tier?: number | null
+  break_after?: 'major' | 'minor' | null
+  flag?: 'target' | 'fade' | null
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000'

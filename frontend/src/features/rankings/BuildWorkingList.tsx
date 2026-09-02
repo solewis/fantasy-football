@@ -1,13 +1,18 @@
 import { useRef, useState } from 'react'
 
 import type { PoolPlayer } from '../../api/rankPool'
-import { tiersForOrder } from '../../lib/rankBuilder'
+import {
+  tiersForOrder,
+  type BreakStrength,
+  type PlayerFlag,
+} from '../../lib/rankBuilder'
 import { isBelowMidpoint } from '../../lib/reorder'
 import { PositionTag } from '../players/PositionTag'
 
 interface BuildWorkingListProps {
   order: string[]
-  breakAfterIds: string[]
+  breaks: Record<string, BreakStrength>
+  flags: Record<string, PlayerFlag>
   insertAt: number | null
   playersById: Map<string, PoolPlayer>
   scope: string
@@ -17,8 +22,20 @@ interface BuildWorkingListProps {
     hoveredId: string | null,
     insertAfter: boolean,
   ) => void
-  onToggleTierBreak: (afterPlayerId: string) => void
+  onSetTierBreak: (
+    afterPlayerId: string,
+    strength: BreakStrength | null,
+  ) => void
+  onSetFlag: (playerId: string, flag: PlayerFlag | null) => void
   onSetInsertAt: (index: number | null) => void
+}
+
+/** Clicking the break control walks none -> minor -> major -> none, so one
+ * button covers both weights without a menu. */
+const NEXT_BREAK: Record<string, BreakStrength | null> = {
+  none: 'minor',
+  minor: 'major',
+  major: null,
 }
 
 /** The list you're building.
@@ -31,23 +48,23 @@ interface BuildWorkingListProps {
  */
 export function BuildWorkingList({
   order,
-  breakAfterIds,
+  breaks,
+  flags,
   insertAt,
   playersById,
   scope,
   onRemove,
   onReorder,
-  onToggleTierBreak,
+  onSetTierBreak,
+  onSetFlag,
   onSetInsertAt,
 }: BuildWorkingListProps) {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const draggedIdRef = useRef<string | null>(null)
   const lastHoverKeyRef = useRef<string | null>(null)
-  const breaks = new Set(breakAfterIds)
   // Which tier each row lands in, so a divider can name the tier it opens.
-  const tierNumbers = tiersForOrder(order, breakAfterIds).map(
-    (tier) => tier ?? 1,
-  )
+  const tierNumbers = tiersForOrder(order, breaks).map((tier) => tier ?? 1)
+  const hasBreaks = Object.keys(breaks).length > 0
 
   function startDrag(id: string) {
     setDraggedId(id)
@@ -108,7 +125,9 @@ export function BuildWorkingList({
                   + insert here
                 </button>
                 <div
-                  className={`build-working-row${draggedId === playerId ? ' dragging' : ''}`}
+                  className={`build-working-row${draggedId === playerId ? ' dragging' : ''}${
+                    flags[playerId] ? ` flag-${flags[playerId]}` : ''
+                  }`}
                   draggable
                   onDragStart={() => startDrag(playerId)}
                   onDragEnd={endDrag}
@@ -123,7 +142,7 @@ export function BuildWorkingList({
                   }}
                 >
                   <span className="build-slot">{slotLabel(index)}</span>
-                  {breakAfterIds.length > 0 && (
+                  {hasBreaks && (
                     <span className="build-row-tier">
                       T{tierNumbers[index]}
                     </span>
@@ -134,19 +153,53 @@ export function BuildWorkingList({
                   </span>
                   <button
                     type="button"
-                    className={`build-row-action build-break-toggle${
-                      breaks.has(playerId) ? ' active' : ''
+                    className={`build-row-action build-flag build-flag-target${
+                      flags[playerId] === 'target' ? ' active' : ''
                     }`}
-                    onClick={() => onToggleTierBreak(playerId)}
-                    aria-label={`${breaks.has(playerId) ? 'Remove' : 'Add'} tier break after ${player?.name ?? playerId}`}
-                    aria-pressed={breaks.has(playerId)}
-                    title={
-                      breaks.has(playerId)
-                        ? 'Remove the tier break after this player'
-                        : 'Start a new tier after this player'
+                    onClick={() =>
+                      onSetFlag(
+                        playerId,
+                        flags[playerId] === 'target' ? null : 'target',
+                      )
                     }
+                    aria-pressed={flags[playerId] === 'target'}
+                    aria-label={`${flags[playerId] === 'target' ? 'Clear target on' : 'Target'} ${player?.name ?? playerId}`}
+                    title="Target — happy to reach for him"
                   >
-                    ⌐
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    className={`build-row-action build-flag build-flag-fade${
+                      flags[playerId] === 'fade' ? ' active' : ''
+                    }`}
+                    onClick={() =>
+                      onSetFlag(
+                        playerId,
+                        flags[playerId] === 'fade' ? null : 'fade',
+                      )
+                    }
+                    aria-pressed={flags[playerId] === 'fade'}
+                    aria-label={`${flags[playerId] === 'fade' ? 'Clear fade on' : 'Fade'} ${player?.name ?? playerId}`}
+                    title="Fade — would rather not"
+                  >
+                    ▼
+                  </button>
+                  <button
+                    type="button"
+                    className={`build-row-action build-break-toggle${
+                      breaks[playerId] ? ` active ${breaks[playerId]}` : ''
+                    }`}
+                    onClick={() =>
+                      onSetTierBreak(
+                        playerId,
+                        NEXT_BREAK[breaks[playerId] ?? 'none'],
+                      )
+                    }
+                    aria-label={`Tier break after ${player?.name ?? playerId}: currently ${breaks[playerId] ?? 'none'}`}
+                    title="Tier break after this player — click to cycle none / small / big"
+                  >
+                    {breaks[playerId] === 'major' ? '═' : '⌐'}
                   </button>
                   <button
                     type="button"
@@ -157,9 +210,12 @@ export function BuildWorkingList({
                     ✕
                   </button>
                 </div>
-                {breaks.has(playerId) && (
-                  <div className="build-tier-break">
-                    <span>Tier {tierNumbers[index] + 1}</span>
+                {breaks[playerId] && (
+                  <div className={`build-tier-break ${breaks[playerId]}`}>
+                    <span>
+                      Tier {tierNumbers[index] + 1}
+                      {breaks[playerId] === 'major' && ' · big drop'}
+                    </span>
                   </div>
                 )}
               </li>

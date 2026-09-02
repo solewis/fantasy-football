@@ -14,6 +14,8 @@ const adpPlayers: PlayerRow[] = [
     team: 'CIN',
     adp: 1.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
   {
     rank: 2,
@@ -23,6 +25,8 @@ const adpPlayers: PlayerRow[] = [
     team: 'ATL',
     adp: 2.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
 ]
 
@@ -35,6 +39,8 @@ const savedRanks: RankRow[] = [
     team: 'ATL',
     adp: 2.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
   {
     rank: 2,
@@ -44,6 +50,8 @@ const savedRanks: RankRow[] = [
     team: 'CIN',
     adp: 1.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
 ]
 
@@ -225,5 +233,58 @@ describe('DraftPlayerPool', () => {
       screen.queryByRole('button', { name: 'Draft' }),
     ).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: '+ Queue' })).toHaveLength(2)
+  })
+})
+
+describe('marks carried through from the rankings builder', () => {
+  const markedRanks: RankRow[] = [
+    { ...savedRanks[0], flag: 'target', break_after: 'major' },
+    { ...savedRanks[1], flag: 'fade' },
+  ]
+
+  function renderPool() {
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+  }
+
+  it('labels targets and fades in words, not just colour', async () => {
+    mockFetch({ ranks: markedRanks })
+    renderPool()
+    await screen.findByText('Bijan Robinson')
+
+    expect(screen.getByText('target')).toBeInTheDocument()
+    expect(screen.getByText('fade')).toBeInTheDocument()
+  })
+
+  it('draws a tier break on the row below the player it follows', async () => {
+    // Anchoring it to the next row means the divider never trails off the
+    // bottom when the tier below is drafted out or filtered away.
+    mockFetch({ ranks: markedRanks })
+    renderPool()
+    await screen.findByText('Bijan Robinson')
+
+    const rows = screen.getAllByRole('row').slice(1)
+    expect(rows[0].className).not.toContain('tier-break')
+    expect(rows[1].className).toContain('tier-break-major')
+  })
+
+  it('shows no break markers when the rank set has none', async () => {
+    mockFetch({ ranks: savedRanks })
+    renderPool()
+    await screen.findByText('Bijan Robinson')
+
+    for (const row of screen.getAllByRole('row').slice(1)) {
+      expect(row.className).not.toContain('tier-break')
+    }
+    expect(screen.queryByText('target')).toBeNull()
   })
 })

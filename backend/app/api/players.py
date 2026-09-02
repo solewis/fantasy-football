@@ -26,6 +26,8 @@ class PlayerRow(BaseModel):
     team: str | None
     adp: float
     tier: None = None
+    break_after: None = None
+    flag: None = None
 
 
 @router.get("/players", response_model=list[PlayerRow])

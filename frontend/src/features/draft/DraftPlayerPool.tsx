@@ -128,13 +128,43 @@ export function DraftPlayerPool({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.platform_player_id}>
+              {rows.map((row, index) => (
+                <tr
+                  key={row.platform_player_id}
+                  className={[
+                    row.flag ? `flag-${row.flag}` : '',
+                    // A break belongs to the player it follows, but the line
+                    // is drawn above the *next* row -- otherwise the last
+                    // visible player would trail a divider into nothing when
+                    // the tier below is fully drafted or filtered out.
+                    index > 0 && rows[index - 1].break_after
+                      ? `tier-break-${rows[index - 1].break_after}`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
                   <td>{row.rank}</td>
                   <td>{row.adp !== null ? row.adp.toFixed(1) : '—'}</td>
                   <td>
                     <PositionTag position={row.position} />
                     <span className="player-name">{row.name}</span>
+                    {row.flag === 'target' && (
+                      <span
+                        className="draft-pool-flag target"
+                        title="You marked this player a target"
+                      >
+                        target
+                      </span>
+                    )}
+                    {row.flag === 'fade' && (
+                      <span
+                        className="draft-pool-flag fade"
+                        title="You marked this player a fade"
+                      >
+                        fade
+                      </span>
+                    )}
                   </td>
                   <td>{row.team ?? '—'}</td>
                   <td className="draft-pool-actions">

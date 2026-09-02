@@ -175,9 +175,14 @@ export function RankingsPage({ platform, format }: RankingsPageProps) {
     try {
       const result = await saveRanksForSet(
         selectedSetId,
+        // break_after/flag ride along even though this view doesn't edit
+        // them: the save is a full replace, so dropping them here would
+        // silently wipe every tier break and target/fade the builder set.
         workingList.map((row) => ({
           platform_player_id: row.platform_player_id,
           tier: row.tier,
+          break_after: row.break_after,
+          flag: row.flag,
         })),
       )
       setSaveMessage(`Saved ${result.count} ranks`)

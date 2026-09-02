@@ -20,6 +20,8 @@ const adpPlayers: PlayerRow[] = [
     team: 'CIN',
     adp: 1.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
   {
     rank: 2,
@@ -29,6 +31,8 @@ const adpPlayers: PlayerRow[] = [
     team: 'ATL',
     adp: 2.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
 ]
 
@@ -41,6 +45,8 @@ const savedRanks: RankRow[] = [
     team: 'ATL',
     adp: 2.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
   {
     rank: 2,
@@ -50,6 +56,8 @@ const savedRanks: RankRow[] = [
     team: 'CIN',
     adp: 1.0,
     tier: null,
+    break_after: null,
+    flag: null,
   },
 ]
 
@@ -97,6 +105,8 @@ function mockBackend({
       team: player.team,
       adp: player.adp,
       tier: null,
+      break_after: null,
+      flag: null,
     }
   }
 
@@ -129,6 +139,8 @@ function mockBackend({
               team: null,
               adp: null,
               tier: null,
+              break_after: null,
+              flag: null,
             }
       })
       const set = sets.find((s) => s.id === id)

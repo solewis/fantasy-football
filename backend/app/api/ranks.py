@@ -59,11 +59,15 @@ class RankRow(BaseModel):
     team: str | None
     adp: float | None
     tier: int | None
+    break_after: str | None = None
+    flag: str | None = None
 
 
 class ReplaceRankEntry(BaseModel):
     platform_player_id: str
     tier: int | None = None
+    break_after: str | None = None
+    flag: str | None = None
 
 
 class ReplaceRanksRequest(BaseModel):
@@ -88,7 +92,12 @@ class ReplaceRanksRequest(BaseModel):
     def to_entries(self) -> list[RankEntryInput]:
         if self.entries is not None:
             return [
-                RankEntryInput(platform_player_id=e.platform_player_id, tier=e.tier)
+                RankEntryInput(
+                    platform_player_id=e.platform_player_id,
+                    tier=e.tier,
+                    break_after=e.break_after,
+                    flag=e.flag,
+                )
                 for e in self.entries
             ]
         assert self.platform_player_ids is not None

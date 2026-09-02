@@ -101,3 +101,35 @@ body {
   color: var(--surface-page);
   border-color: var(--text-primary);
 }
+
+/* Draft mode: the board wants every pixel, so the app chrome gets out of the
+   way. Keyed off the draft page being on screen rather than a flag threaded up
+   from LeaguesSection, which is the component that actually knows. */
+.app-shell:has(.draft-page) .app-header {
+  padding: 6px 12px;
+  gap: 14px;
+}
+
+.app-shell:has(.draft-page) .app-header h1 {
+  font-size: 14px;
+}
+
+.app-shell:has(.draft-page) .app-nav-tab {
+  padding: 3px 10px;
+  font-size: 13px;
+}
+
+/* Nothing below the header should scroll the page itself -- the board and the
+   player list each scroll in their own pane. */
+.app-shell:has(.draft-page) {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-shell:has(.draft-page) main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

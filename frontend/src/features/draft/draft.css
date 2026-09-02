@@ -83,9 +83,10 @@
   box-sizing: border-box;
   /* The board used to run the full 15 rounds down the page, pushing the player
      list below the fold -- the two things you need at once. It scrolls inside
-     itself now, and starts scrolled to the live round. */
-  max-height: 42vh;
+     itself now. */
+  max-height: 46vh;
   overflow: auto;
+  margin-bottom: 10px;
 }
 
 .draft-board {
@@ -476,10 +477,11 @@
   color: var(--text-primary);
 }
 
+/* Full bleed on purpose. A draft board is a grid of teams x rounds, and every
+   pixel of width is another team you can see without scrolling sideways --
+   which is the whole reason to have a board rather than a list. */
 .draft-page {
-  padding: 20px;
-  max-width: 1900px;
-  margin: 0 auto;
+  padding: 8px 12px 12px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -489,8 +491,8 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 .draft-page-status-line {
@@ -525,7 +527,8 @@
 
 .draft-page-header-actions button {
   font: inherit;
-  padding: 8px 14px;
+  padding: 5px 12px;
+  font-size: 13px;
   border-radius: 6px;
   border: 1px solid var(--border-strong);
   background: transparent;
@@ -662,4 +665,22 @@
     animation: none;
     opacity: 0.8;
   }
+}
+
+.draft-setup-wrapper {
+  padding: 16px 20px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.draft-setup-wrapper > button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
 }

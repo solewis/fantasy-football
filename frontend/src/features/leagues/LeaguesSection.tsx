@@ -97,16 +97,13 @@ export function LeaguesSection() {
 
   if (view === 'adhoc') {
     return (
-      <div className="leagues-page">
-        <button
-          type="button"
-          className="league-detail-back"
-          onClick={() => setView('list')}
-        >
-          ← Leagues
-        </button>
-        <DraftPage />
-      </div>
+      <DraftPage
+        backControl={
+          <button type="button" onClick={() => setView('list')}>
+            ← Leagues
+          </button>
+        }
+      />
     )
   }
 

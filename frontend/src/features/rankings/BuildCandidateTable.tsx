@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { PoolSource } from '../../api/rankPool'
 import { isContested, type CandidateSummary } from '../../lib/consensus'
 import { PositionTag } from '../players/PositionTag'
-import { DeltaChip } from './DeltaChip'
+import { DeltaChip } from '../../components/DeltaChip'
 import { DeltaLegend } from './DeltaLegend'
 
 interface BuildCandidateTableProps {

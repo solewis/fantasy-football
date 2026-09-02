@@ -5,7 +5,7 @@ import {
   formatDelta,
   rankDelta,
   thresholdsAt,
-} from '../../lib/deltaBuckets'
+} from '../lib/deltaBuckets'
 import './delta.css'
 
 interface DeltaChipProps {

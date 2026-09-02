@@ -4,7 +4,7 @@ import {
   formatDelta,
   thresholdsAt,
 } from '../../lib/deltaBuckets'
-import './delta.css'
+import '../../components/delta.css'
 
 interface DeltaLegendProps {
   slot: number

@@ -7,6 +7,7 @@ import {
   type BuildPosition,
   type PositionFilter,
 } from '../../lib/formats'
+import { DeltaChip } from '../../components/DeltaChip'
 import { PositionTag } from '../players/PositionTag'
 import '../players/players.css'
 import './draft.css'
@@ -21,6 +22,10 @@ interface DraftPlayerPoolProps {
    * When set, reads that exact rank set instead of the format-based
    * "whichever set was created first" resolver. */
   rankSetId?: number | null
+  /** The pick on the clock, which is what "value" and "reach" are measured
+   * against. 0 once the draft is complete -- nothing is on the clock then, so
+   * there's no reference point and the columns hide themselves. */
+  nextPickNumber: number
   draftedIds: Set<string>
   queuedIds: Set<string>
   canDraft: boolean
@@ -32,6 +37,7 @@ export function DraftPlayerPool({
   format,
   platform,
   rankSetId,
+  nextPickNumber,
   draftedIds,
   queuedIds,
   canDraft,
@@ -86,6 +92,11 @@ export function DraftPlayerPool({
       : undefined
   const usingPositionalList = positionalRows !== undefined
   const sourceRows = positionalRows ?? pools?.overall ?? []
+
+  // Only on the overall board. Within a position tab, rank is a positional
+  // rank (WR7) and comparing it to an overall pick number is nonsense.
+  // 0 means the draft is over -- nothing is on the clock to measure against.
+  const showValue = position === 'ALL' && nextPickNumber > 0
 
   const rows = sourceRows.filter((row) => {
     if (draftedIds.has(row.platform_player_id)) return false
@@ -145,6 +156,16 @@ export function DraftPlayerPool({
               <tr>
                 <th>Rk</th>
                 <th>ADP</th>
+                {showValue && (
+                  <>
+                    <th title="Where this player usually goes, against the pick on the clock">
+                      vs ADP
+                    </th>
+                    <th title="Where you have this player, against the pick on the clock">
+                      vs You
+                    </th>
+                  </>
+                )}
                 <th>Name</th>
                 <th>Team</th>
                 <th aria-hidden="true"></th>
@@ -156,12 +177,17 @@ export function DraftPlayerPool({
                   key={row.platform_player_id}
                   className={[
                     row.flag ? `flag-${row.flag}` : '',
-                    // A break belongs to the player it follows, but the line
-                    // is drawn above the *next* row -- otherwise the last
-                    // visible player would trail a divider into nothing when
-                    // the tier below is fully drafted or filtered out.
-                    index > 0 && rows[index - 1].break_after
-                      ? `tier-break-${rows[index - 1].break_after}`
+                    // Driven by the tier *number* changing, not by the
+                    // previous row's break_after. Two reasons: lists saved
+                    // before break weights existed have tiers but no
+                    // break_after, and the player carrying the break is often
+                    // already drafted and filtered out of view. break_after
+                    // only picks the weight when it happens to be there.
+                    index > 0 &&
+                    row.tier !== null &&
+                    rows[index - 1].tier !== null &&
+                    row.tier !== rows[index - 1].tier
+                      ? `tier-break-${rows[index - 1].break_after ?? 'minor'}`
                       : '',
                     row.unranked ? 'unranked' : '',
                     // The first row past your own list, so you can see at a
@@ -175,6 +201,28 @@ export function DraftPlayerPool({
                 >
                   <td>{row.rank}</td>
                   <td>{row.adp !== null ? row.adp.toFixed(1) : '—'}</td>
+                  {showValue && (
+                    <>
+                      <td>
+                        <DeltaChip
+                          sourceRank={
+                            row.adp !== null ? Math.round(row.adp) : null
+                          }
+                          slot={nextPickNumber}
+                          sourceLabel="ADP"
+                          slotLabel={`pick ${nextPickNumber}`}
+                        />
+                      </td>
+                      <td>
+                        <DeltaChip
+                          sourceRank={row.unranked ? null : row.rank}
+                          slot={nextPickNumber}
+                          sourceLabel="Your rank"
+                          slotLabel={`pick ${nextPickNumber}`}
+                        />
+                      </td>
+                    </>
+                  )}
                   <td>
                     <PositionTag position={row.position} />
                     <span className="player-name">{row.name}</span>
@@ -194,6 +242,14 @@ export function DraftPlayerPool({
                         fade
                       </span>
                     )}
+                    {index > 0 &&
+                      row.tier !== null &&
+                      rows[index - 1].tier !== null &&
+                      row.tier !== rows[index - 1].tier && (
+                        <span className="draft-pool-tier-note">
+                          Tier {row.tier}
+                        </span>
+                      )}
                     {row.unranked && index > 0 && !rows[index - 1].unranked && (
                       <span className="draft-pool-unranked-note">
                         past your ranks — ADP order below

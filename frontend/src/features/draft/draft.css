@@ -575,3 +575,41 @@
   font-size: 11px;
   color: var(--text-muted, #898781);
 }
+
+.draft-pool-tier-note {
+  margin-left: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #898781);
+}
+
+/* A quiet heartbeat on the sync badge. Without it, "nobody has picked yet" and
+   "the poller died" look exactly the same. */
+.draft-page-sync-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: draft-sync-pulse 2s ease-in-out infinite;
+}
+
+@keyframes draft-sync-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draft-page-sync-dot {
+    animation: none;
+    opacity: 0.8;
+  }
+}

@@ -18,7 +18,10 @@ import { DraftPlayerPool } from './DraftPlayerPool'
 import { DraftSidePanel } from './DraftSidePanel'
 import './draft.css'
 
-const SYNC_INTERVAL_MS = 5000
+// A mock draft with bots picks about once a second, so 5s made the board
+// feel a long way behind. Each sync is ~100ms against a local backend, so a
+// tighter loop costs little.
+const SYNC_INTERVAL_MS = 2000
 
 interface DraftRoomProps {
   draftId: number
@@ -43,6 +46,9 @@ export function DraftRoom({
   const [status, setStatus] = useState<DraftStatus | null>(null)
   const [queue, setQueue] = useState<QueueRow[]>([])
   const [error, setError] = useState<string | null>(null)
+  // Proof the live sync is alive. Without it a quiet stretch of the draft and
+  // a broken poller look identical from the outside.
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
   const [confirmingSwitchToManual, setConfirmingSwitchToManual] =
     useState(false)
 
@@ -88,15 +94,24 @@ export function DraftRoom({
     )
       return
 
+    let inFlight = false
     const interval = setInterval(() => {
+      // Skip a tick rather than stacking requests if one is slow -- otherwise
+      // a hiccup queues syncs that all land at once.
+      if (inFlight) return
+      inFlight = true
       Promise.all([syncDraft(draftId), fetchQueue(draftId)])
         .then(([statusResult, queueResult]) => {
           setStatus(statusResult)
           setQueue(queueResult)
           setError(null)
+          setLastSyncedAt(Date.now())
         })
         .catch((err: unknown) => {
           setError(err instanceof Error ? err.message : 'Failed to sync draft')
+        })
+        .finally(() => {
+          inFlight = false
         })
     }, SYNC_INTERVAL_MS)
 
@@ -215,7 +230,15 @@ export function DraftRoom({
       <div className="draft-page-header">
         <div className="draft-page-status-line">
           {isLiveSynced && (
-            <span className="draft-page-sleeper-badge">
+            <span
+              className="draft-page-sleeper-badge"
+              title={
+                lastSyncedAt
+                  ? `Last checked ${new Date(lastSyncedAt).toLocaleTimeString()}`
+                  : 'Waiting for the first sync'
+              }
+            >
+              <span className="draft-page-sync-dot" aria-hidden="true" />
               Synced from {platformDisplayName(status.draft.platform)}
             </span>
           )}
@@ -277,6 +300,7 @@ export function DraftRoom({
           format={status.draft.format}
           platform={playerPoolPlatform}
           rankSetId={status.draft.rank_set_id}
+          nextPickNumber={status.next_pick_number ?? 0}
           draftedIds={draftedIds}
           queuedIds={queuedIds}
           canDraft={!isLiveSynced}

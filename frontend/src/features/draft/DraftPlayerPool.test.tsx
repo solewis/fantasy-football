@@ -114,6 +114,7 @@ describe('DraftPlayerPool', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -133,6 +134,7 @@ describe('DraftPlayerPool', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         rankSetId={5}
         draftedIds={new Set()}
         queuedIds={new Set()}
@@ -157,6 +159,7 @@ describe('DraftPlayerPool', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set(['2'])}
         queuedIds={new Set()}
         canDraft={true}
@@ -177,6 +180,7 @@ describe('DraftPlayerPool', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -199,6 +203,7 @@ describe('DraftPlayerPool', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set(['3'])}
         canDraft={true}
@@ -223,6 +228,7 @@ describe('DraftPlayerPool', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -245,6 +251,7 @@ describe('DraftPlayerPool', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={false}
@@ -264,8 +271,8 @@ describe('DraftPlayerPool', () => {
 
 describe('marks carried through from the rankings builder', () => {
   const markedRanks: RankRow[] = [
-    { ...savedRanks[0], flag: 'target', break_after: 'major' },
-    { ...savedRanks[1], flag: 'fade' },
+    { ...savedRanks[0], flag: 'target', tier: 1, break_after: 'major' },
+    { ...savedRanks[1], flag: 'fade', tier: 2 },
   ]
 
   function renderPool() {
@@ -273,6 +280,7 @@ describe('marks carried through from the rankings builder', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -291,16 +299,54 @@ describe('marks carried through from the rankings builder', () => {
     expect(screen.getByText('fade')).toBeInTheDocument()
   })
 
-  it('draws a tier break on the row below the player it follows', async () => {
-    // Anchoring it to the next row means the divider never trails off the
-    // bottom when the tier below is drafted out or filtered away.
+  it('draws a tier break where the tier number changes', async () => {
     mockFetch({ ranks: markedRanks })
     renderPool()
     await screen.findByText('Bijan Robinson')
 
     const rows = screen.getAllByRole('row').slice(1)
     expect(rows[0].className).not.toContain('tier-break')
+    // break_after only picks the weight
     expect(rows[1].className).toContain('tier-break-major')
+    expect(screen.getByText('Tier 2')).toBeInTheDocument()
+  })
+
+  it('still shows tiers for a list saved before break weights existed', async () => {
+    // Regression: dividers used to key off break_after, so every list built
+    // before that column existed showed tier numbers but no dividers at all.
+    const tiersOnly: RankRow[] = [
+      { ...savedRanks[0], tier: 1, break_after: null },
+      { ...savedRanks[1], tier: 2, break_after: null },
+    ]
+    mockFetch({ ranks: tiersOnly })
+    renderPool()
+    await screen.findByText('Bijan Robinson')
+
+    const rows = screen.getAllByRole('row').slice(1)
+    expect(rows[1].className).toContain('tier-break-minor')
+  })
+
+  it('keeps the divider when the player carrying the break is drafted', async () => {
+    // The break belongs to a player who is now off the board, so keying off
+    // that player's break_after would lose the divider entirely.
+    mockFetch({ ranks: markedRanks })
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set(['2'])}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText("Ja'Marr Chase")
+
+    // Chase (tier 2) now sits directly below the ADP tail boundary rather
+    // than below his tier-1 predecessor, so no stale divider is drawn.
+    expect(screen.queryByText('Bijan Robinson')).toBeNull()
   })
 
   it('shows no break markers when the rank set has none', async () => {
@@ -325,6 +371,7 @@ describe('the ADP tail below your own ranks', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -347,6 +394,7 @@ describe('the ADP tail below your own ranks', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -366,6 +414,7 @@ describe('the ADP tail below your own ranks', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -417,6 +466,7 @@ describe('per-position lists', () => {
       <DraftPlayerPool
         format="half_ppr"
         platform="sleeper"
+        nextPickNumber={20}
         draftedIds={new Set()}
         queuedIds={new Set()}
         canDraft={true}
@@ -492,5 +542,96 @@ describe('per-position lists', () => {
     await waitFor(() => {
       expect(screen.queryByText(/Using your RB list/)).toBeNull()
     })
+  })
+})
+
+describe('value vs reach', () => {
+  const ranked: RankRow[] = [
+    // ADP 60 with the clock on pick 20: taking him now is a 40-pick reach.
+    {
+      rank: 1,
+      platform_player_id: '2',
+      name: 'Bijan Robinson',
+      position: 'RB',
+      team: 'ATL',
+      adp: 60.0,
+      tier: null,
+      break_after: null,
+      flag: null,
+    },
+    // ADP 5 and still here at pick 20: a 15-pick value.
+    {
+      rank: 2,
+      platform_player_id: '3',
+      name: "Ja'Marr Chase",
+      position: 'WR',
+      team: 'CIN',
+      adp: 5.0,
+      tier: null,
+      break_after: null,
+      flag: null,
+    },
+  ]
+
+  function renderAtPick(pick: number) {
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={pick}
+        rankSetId={1}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+  }
+
+  it('reads a player going later than the clock as a reach', async () => {
+    mockFetch({ rankSetRanks: ranked })
+    renderAtPick(20)
+    await screen.findByText('Bijan Robinson')
+
+    const row = screen
+      .getAllByRole('row')
+      .find((r) => r.textContent?.includes('Bijan Robinson'))
+    // ADP 60 against pick 20
+    expect(row?.textContent).toContain('+40')
+  })
+
+  it('reads a player who has fallen past his ADP as a value', async () => {
+    mockFetch({ rankSetRanks: ranked })
+    renderAtPick(20)
+    await screen.findByText("Ja'Marr Chase")
+
+    const row = screen
+      .getAllByRole('row')
+      .find((r) => r.textContent?.includes("Ja'Marr Chase"))
+    expect(row?.textContent).toContain('-15')
+  })
+
+  it('hides the columns inside a position tab', async () => {
+    // Rank is a positional rank there (WR7); comparing it to an overall pick
+    // number would be nonsense.
+    mockFetch({ rankSetRanks: ranked })
+    renderAtPick(20)
+    await screen.findByText('Bijan Robinson')
+    expect(screen.getByText('vs ADP')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'RB' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('vs ADP')).toBeNull()
+    })
+  })
+
+  it('hides the columns once the draft is over', async () => {
+    mockFetch({ rankSetRanks: ranked })
+    renderAtPick(0)
+    await screen.findByText('Bijan Robinson')
+
+    expect(screen.queryByText('vs ADP')).toBeNull()
   })
 })

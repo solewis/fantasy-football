@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 
+import { fetchDraftPools, type DraftPools } from '../../lib/fetchRankedPlayers'
 import {
-  fetchRankedOrAdpFallback,
-  type PoolRow,
-} from '../../lib/fetchRankedPlayers'
-import { POSITIONS, SEASON, type PositionFilter } from '../../lib/formats'
+  POSITIONS,
+  SEASON,
+  type BuildPosition,
+  type PositionFilter,
+} from '../../lib/formats'
 import { PositionTag } from '../players/PositionTag'
 import '../players/players.css'
 import './draft.css'
@@ -38,7 +40,7 @@ export function DraftPlayerPool({
 }: DraftPlayerPoolProps) {
   const [position, setPosition] = useState<PositionFilter>('ALL')
   const [search, setSearch] = useState('')
-  const [allRows, setAllRows] = useState<PoolRow[]>([])
+  const [pools, setPools] = useState<DraftPools | null>(null)
   const [error, setError] = useState<string | null>(null)
   // format/platform/rankSetId are props here (owned by the parent's draft
   // setup), not a local selector, so there's no local event handler to set a
@@ -52,10 +54,10 @@ export function DraftPlayerPool({
     let cancelled = false
     const key = `${platform}:${format}:${rankSetId ?? 'none'}`
 
-    fetchRankedOrAdpFallback(SEASON, format, rankSetId, platform)
+    fetchDraftPools(SEASON, format, rankSetId, platform)
       .then((result) => {
         if (cancelled) return
-        setAllRows(result.rows)
+        setPools(result)
         setError(null)
         setLoadedKey(key)
       })
@@ -73,9 +75,22 @@ export function DraftPlayerPool({
   const loading = loadedKey !== currentKey
 
   const searchTerm = search.trim().toLowerCase()
-  const rows = allRows.filter((row) => {
+
+  // A position tab shows the list you built for that position -- its own
+  // order, tiers and target/fade marks -- rather than the overall list
+  // filtered down, which would throw all of that away. Positions you haven't
+  // built a list for (and K/DEF, which have none) fall back to filtering.
+  const positionalRows =
+    position !== 'ALL'
+      ? pools?.byPosition[position as BuildPosition]
+      : undefined
+  const usingPositionalList = positionalRows !== undefined
+  const sourceRows = positionalRows ?? pools?.overall ?? []
+
+  const rows = sourceRows.filter((row) => {
     if (draftedIds.has(row.platform_player_id)) return false
-    if (position !== 'ALL' && row.position !== position) return false
+    if (!usingPositionalList && position !== 'ALL' && row.position !== position)
+      return false
     if (searchTerm && !row.name.toLowerCase().includes(searchTerm)) return false
     return true
   })
@@ -111,8 +126,14 @@ export function DraftPlayerPool({
         ))}
       </div>
 
+      {usingPositionalList && (
+        <p className="draft-pool-list-note">
+          Using your {position} list — its own order, tiers and marks.
+        </p>
+      )}
+
       <div className="draft-pool-table-wrapper">
-        {loading && allRows.length === 0 ? (
+        {loading && pools === null ? (
           <p className="draft-pool-status">Loading…</p>
         ) : error ? (
           <p className="draft-pool-error">{error}</p>

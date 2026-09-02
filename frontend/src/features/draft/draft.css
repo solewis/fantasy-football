@@ -569,3 +569,9 @@
   letter-spacing: 0.04em;
   color: var(--text-muted, #898781);
 }
+
+.draft-pool-list-note {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--text-muted, #898781);
+}

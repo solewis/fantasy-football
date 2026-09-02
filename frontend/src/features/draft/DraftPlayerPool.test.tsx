@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PlayerRow } from '../../api/players'
@@ -76,15 +76,25 @@ function mockFetch({
   ranks = [],
   players = adpPlayers,
   rankSetRanks = [],
+  rankSets = [],
+  ranksBySetId = {},
 }: {
   ranks?: RankRow[]
   players?: PlayerRow[]
   rankSetRanks?: RankRow[]
+  /** What GET /rank-sets returns -- the pool reads this to find your
+   * per-position lists. */
+  rankSets?: { id: number; scope: string }[]
+  ranksBySetId?: Record<number, RankRow[]>
 } = {}) {
   const fetchMock = vi.fn((url: string) => {
-    if (url.includes('/rank-sets/')) {
-      return Promise.resolve(jsonResponse(rankSetRanks))
+    const setRanks = /\/rank-sets\/(\d+)\/ranks/.exec(url)
+    if (setRanks) {
+      const id = Number(setRanks[1])
+      return Promise.resolve(jsonResponse(ranksBySetId[id] ?? rankSetRanks))
     }
+    if (url.includes('/rank-sets'))
+      return Promise.resolve(jsonResponse(rankSets))
     if (url.includes('/ranks')) return Promise.resolve(jsonResponse(ranks))
     return Promise.resolve(jsonResponse(players))
   })
@@ -366,5 +376,121 @@ describe('the ADP tail below your own ranks', () => {
     await screen.findByText("Ja'Marr Chase")
 
     expect(screen.queryByText(/past your ranks/)).toBeNull()
+  })
+})
+
+describe('per-position lists', () => {
+  // An overall list that ranks Chase above Nacua...
+  const overall: RankRow[] = [
+    { ...savedRanks[1], rank: 1 },
+    {
+      rank: 2,
+      platform_player_id: '4',
+      name: 'Puka Nacua',
+      position: 'WR',
+      team: 'LAR',
+      adp: 4.0,
+      tier: null,
+      break_after: null,
+      flag: null,
+    },
+  ]
+
+  // ...and a WR list that deliberately disagrees, with marks of its own.
+  const wrList: RankRow[] = [
+    {
+      rank: 1,
+      platform_player_id: '4',
+      name: 'Puka Nacua',
+      position: 'WR',
+      team: 'LAR',
+      adp: 4.0,
+      tier: 1,
+      break_after: 'major',
+      flag: 'target',
+    },
+    { ...savedRanks[1], rank: 2, tier: 2, flag: 'fade' },
+  ]
+
+  function renderPool() {
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+  }
+
+  it('uses your list for that position, not the overall list filtered', async () => {
+    mockFetch({
+      ranks: overall,
+      rankSets: [{ id: 7, scope: 'WR' }],
+      ranksBySetId: { 7: wrList },
+    })
+    renderPool()
+    await screen.findByText("Ja'Marr Chase")
+
+    // ALL tab follows the overall list: Chase first
+    let names = screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => r.textContent ?? '')
+    expect(names[0]).toContain("Ja'Marr Chase")
+
+    fireEvent.click(screen.getByRole('tab', { name: 'WR' }))
+
+    // WR tab follows the WR list, which disagrees: Nacua first
+    await waitFor(() => {
+      names = screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => r.textContent ?? '')
+      expect(names[0]).toContain('Puka Nacua')
+    })
+    expect(screen.getByText(/Using your WR list/)).toBeInTheDocument()
+  })
+
+  it('shows the marks from that positional list', async () => {
+    mockFetch({
+      ranks: overall,
+      rankSets: [{ id: 7, scope: 'WR' }],
+      ranksBySetId: { 7: wrList },
+    })
+    renderPool()
+    await screen.findByText("Ja'Marr Chase")
+    // no marks on the overall list
+    expect(screen.queryByText('target')).toBeNull()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'WR' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('target')).toBeInTheDocument()
+    })
+    expect(screen.getByText('fade')).toBeInTheDocument()
+    const rows = screen.getAllByRole('row').slice(1)
+    expect(rows[1].className).toContain('tier-break-major')
+  })
+
+  it('falls back to filtering the overall list for a position with no list', async () => {
+    // K and DEF never get their own lists, and neither does a position you
+    // simply haven't built yet.
+    mockFetch({
+      ranks: overall,
+      rankSets: [{ id: 7, scope: 'WR' }],
+      ranksBySetId: { 7: wrList },
+    })
+    renderPool()
+    await screen.findByText("Ja'Marr Chase")
+
+    fireEvent.click(screen.getByRole('tab', { name: 'RB' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Using your RB list/)).toBeNull()
+    })
   })
 })

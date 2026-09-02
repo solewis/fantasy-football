@@ -1,5 +1,11 @@
 import { fetchPlayers } from '../api/players'
-import { fetchRanks, fetchRanksForSet, type RankRow } from '../api/ranks'
+import {
+  fetchRanks,
+  fetchRankSets,
+  fetchRanksForSet,
+  type RankRow,
+} from '../api/ranks'
+import { BUILD_POSITIONS, type BuildPosition } from './formats'
 
 export type RankedSource = 'saved' | 'adp'
 
@@ -9,56 +15,86 @@ export interface PoolRow extends RankRow {
   unranked?: boolean
 }
 
-export interface RankedPlayersResult {
-  rows: PoolRow[]
+export interface DraftPools {
+  /** The ALL tab: your overall ranks, then everyone else by ADP. */
+  overall: PoolRow[]
+  /** Per position, your own list for that position followed by its ADP tail.
+   * Absent for a position you haven't built a list for, in which case the
+   * caller filters `overall` instead. */
+  byPosition: Partial<Record<BuildPosition, PoolRow[]>>
   source: RankedSource
-  /** How many of `rows` came from your saved ranks. */
-  rankedCount: number
 }
 
-/** Your saved ranks, then everyone else by ADP underneath.
+/** Append everyone else by ADP below a list you built.
  *
- * The tail matters: a hand-built list is usually shorter than a draft is long,
- * and without it the pool simply empties out once your ranks run dry -- mid-
- * draft, with picks still to make. Appending the rest by ADP means you can
- * never run out, while your own order still governs everything you ranked.
- *
- * When `rankSetId` is given (a draft created from a League with a rank set
- * assigned), reads that exact set via `GET /rank-sets/{id}/ranks`. Otherwise
- * falls back to the format-based `GET /ranks` resolver (lowest-id-wins per
- * format) used by manual and non-league-linked drafts.
+ * A hand-built list is almost always shorter than a draft is long, and without
+ * this the pool simply empties out mid-draft with picks still to make.
+ * Numbering continues from your list so the Rk column stays one sequence.
  */
-export async function fetchRankedOrAdpFallback(
+function withAdpTail(saved: RankRow[], adp: RankRow[]): PoolRow[] {
+  const ranked = new Set(saved.map((row) => row.platform_player_id))
+  const tail: PoolRow[] = adp
+    .filter((row) => !ranked.has(row.platform_player_id))
+    .map((row, index) => ({
+      ...row,
+      rank: saved.length + index + 1,
+      unranked: true,
+    }))
+  return [...saved, ...tail]
+}
+
+/** Everything the draft pool needs, fetched once.
+ *
+ * All of it up front rather than per tab: switching positions on the clock
+ * should be instant, and these lists are small. It also means a tab switch
+ * can't fail halfway through a draft.
+ *
+ * `rankSetId` (a draft created from a League with a rank set assigned) reads
+ * that exact set for the overall list; otherwise the format-based `GET /ranks`
+ * resolver applies. Positional lists always come from the resolver's rule --
+ * lowest id wins per scope -- since a League only ever points at an overall
+ * set.
+ */
+export async function fetchDraftPools(
   season: string,
   format: string,
   rankSetId?: number | null,
   platform?: string,
-): Promise<RankedPlayersResult> {
-  const savedRows =
+): Promise<DraftPools> {
+  const [savedOverall, adpRows, rankSets] = await Promise.all([
     rankSetId != null
-      ? await fetchRanksForSet(rankSetId)
-      : await fetchRanks({ season, format, platform })
+      ? fetchRanksForSet(rankSetId)
+      : fetchRanks({ season, format, platform }),
+    fetchPlayers({ season, format, platform }),
+    fetchRankSets({ season, format, platform }),
+  ])
 
-  const adpRows = await fetchPlayers({ season, format, platform })
+  const positionalSets = BUILD_POSITIONS.map((position) => ({
+    position,
+    // Lowest id wins, matching the backend resolver's rule for overall sets.
+    set: rankSets.find((s) => s.scope === position) ?? null,
+  })).filter((entry) => entry.set !== null)
 
-  if (savedRows.length === 0) {
-    return { rows: adpRows, source: 'adp', rankedCount: 0 }
+  const positionalRanks = await Promise.all(
+    positionalSets.map((entry) => fetchRanksForSet(entry.set!.id)),
+  )
+
+  const byPosition: Partial<Record<BuildPosition, PoolRow[]>> = {}
+  positionalSets.forEach((entry, index) => {
+    const saved = positionalRanks[index]
+    if (saved.length === 0) return
+    byPosition[entry.position] = withAdpTail(
+      saved,
+      adpRows.filter((row) => row.position === entry.position),
+    )
+  })
+
+  if (savedOverall.length === 0) {
+    return { overall: adpRows, byPosition, source: 'adp' }
   }
-
-  const ranked = new Set(savedRows.map((row) => row.platform_player_id))
-  const tail: PoolRow[] = adpRows
-    .filter((row) => !ranked.has(row.platform_player_id))
-    // Numbering continues from your list so the Rk column stays a single
-    // sequence rather than restarting at 1 partway down.
-    .map((row, index) => ({
-      ...row,
-      rank: savedRows.length + index + 1,
-      unranked: true,
-    }))
-
   return {
-    rows: [...savedRows, ...tail],
+    overall: withAdpTail(savedOverall, adpRows),
+    byPosition,
     source: 'saved',
-    rankedCount: savedRows.length,
   }
 }

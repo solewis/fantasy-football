@@ -40,18 +40,22 @@ export function isPositionalRankSetSource(source: AvailableSource): boolean {
  * about what "usable" means -- that mismatch is exactly the class of bug this
  * function exists to prevent.
  *
- * Your own positional lists are a special case: they only feed an *overall*
- * build, and only the one list marked active for that position. Comparing an
- * RB list's ranks against QB candidates is meaningless (the players don't
- * even overlap), and showing every list for a position here is the exact
- * ambiguity the active flag exists to remove.
+ * Your own positional lists are a special case, and a hard one rather than a
+ * preference: a positional list's ranks are relative to one position only
+ * ("RB1", "RB2", ...) and there's no honest way to translate that into an
+ * overall rank without inventing value information the list doesn't carry --
+ * the backend refuses to load one as an overall-build source (see
+ * app/rank_sources.py's load_rank_sources). It's only ever a sensible
+ * comparison source while building that exact same position -- comparing an
+ * RB list against QB candidates is equally meaningless, just not rejected by
+ * the backend, since the mismatch doesn't happen to raise there.
  */
 export function isSourceEligibleForScope(
   source: AvailableSource,
   scope: string,
 ): boolean {
   if (isPositionalRankSetSource(source)) {
-    return scope === 'overall' && source.is_active === true
+    return source.scope === scope
   }
   return scope === 'overall'
     ? source.supports_overall

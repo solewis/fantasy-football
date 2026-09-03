@@ -885,7 +885,7 @@ describe('multiple positional rank sets per position', () => {
     },
   ]
 
-  it('only shows the active positional set as a source, grouped separately', async () => {
+  it('cannot select a positional list while building overall -- the backend has no way to compare RB1 to an overall pick', async () => {
     mockBackend(PLAYERS, {
       sources: POSITIONAL_SOURCES,
       rankSets: RANK_SETS,
@@ -894,19 +894,25 @@ describe('multiple positional rank sets per position', () => {
     render(<BuildPage platform="sleeper" format="half_ppr" />)
     await screen.findByText("Ja'Marr Chase")
 
+    // Both show up, active or not -- but neither is selectable here, active
+    // or not, and neither should be silently sent to /rank-pool (that's what
+    // used to crash the overall build with "has no overall ranks").
+    const myQbs = screen.getByRole('checkbox', { name: /My QBs/ })
+    const backup = screen.getByRole('checkbox', { name: /QB backup/ })
+    expect(myQbs).toBeDisabled()
+    expect(backup).toBeDisabled()
     expect(
-      screen.getByText('Your positional lists', {
-        selector: '.build-panel-head',
-      }),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: /My QBs/ })).toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: /QB backup/ })).toBeNull()
+      screen.getAllByText("your positional lists can't feed an overall build")
+        .length,
+    ).toBe(2)
   })
 
-  it('hides the positional-lists section while building a specific position', async () => {
-    // Comparing e.g. an RB list's ranks against QB candidates is meaningless
-    // -- the players don't even overlap -- so no positional rank_set source
-    // should appear at all here, active or not.
+  it('only a positional list matching the current position can be selected as a source', async () => {
+    // Building QB: "My QBs" (a QB list) is a legitimate comparison source --
+    // e.g. checking a new draft strategy against your existing QB list. A WR
+    // or RB list would not be, since the players don't even overlap; this
+    // fixture only has QB lists, so it covers the "matches" half directly and
+    // documents the scope-matching rule the eligibility check enforces.
     mockBackend(PLAYERS, {
       sources: POSITIONAL_SOURCES,
       rankSets: RANK_SETS,
@@ -920,13 +926,10 @@ describe('multiple positional rank sets per position', () => {
     await waitFor(() => {
       expect(screen.getByText('My list (1)')).toBeInTheDocument()
     })
+    expect(screen.getByRole('checkbox', { name: /My QBs/ })).not.toBeDisabled()
     expect(
-      screen.queryByText('Your positional lists', {
-        selector: '.build-panel-head',
-      }),
-    ).toBeNull()
-    expect(screen.queryByRole('checkbox', { name: /My QBs/ })).toBeNull()
-    expect(screen.queryByRole('checkbox', { name: /QB backup/ })).toBeNull()
+      screen.getByRole('checkbox', { name: /QB backup/ }),
+    ).not.toBeDisabled()
   })
 
   it('shows which set is active in the rank-set dropdown, and lets you switch', async () => {

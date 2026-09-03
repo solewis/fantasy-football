@@ -1,7 +1,10 @@
+/* No width cap. The candidate table's source columns are what actually need
+   the room -- three selected sources already needed a horizontal scroll at
+   1240px, on monitors with plenty of width to spare. The source rail and
+   working-list columns are fixed/bounded widths (see .build-grid below), so
+   the extra space goes to the one column built to use it. */
 .build-page {
   padding: 16px 20px 20px;
-  max-width: 1240px;
-  margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
 }

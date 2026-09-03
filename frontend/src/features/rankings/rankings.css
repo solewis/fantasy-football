@@ -147,15 +147,14 @@
 }
 
 /* Section chrome: the platform/format controls and sub-view tabs that all
-   three Rankings views share. */
+   three Rankings views share. No width cap, to match the Build view below it
+   -- a narrower bar sitting above a full-width table would look mismatched. */
 .rankings-section-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 16px 20px 0;
-  max-width: 1240px;
-  margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
 }

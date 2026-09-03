@@ -37,6 +37,15 @@ interface BuildPageProps {
 
 type Scope = 'overall' | BuildPosition
 
+/** A starting point for a fresh set's name, not the final word -- the input
+ * next to "+ New rank set..." is what actually lets you change it. Without an
+ * editable field here, this guess was the *only* name a new set could get,
+ * which meant a second QB build could never save: the guess collided with
+ * whatever "My QBs" you'd already built, and there was nowhere to fix it. */
+function defaultRankSetName(scope: Scope): string {
+  return scope === 'overall' ? 'Built list' : `My ${scope}s`
+}
+
 /** Build a rank list against what other sources think.
  *
  * The tool never picks. It shows what each selected source says about the next
@@ -62,6 +71,12 @@ export function BuildPage({ platform, format }: BuildPageProps) {
   // which meant picking "New rank set..." from the dropdown silently fell
   // back to editing whatever set already existed for the scope.
   const [targetChoice, setTargetChoice] = useState<number | 'new' | null>(null)
+  // Only meaningful while effectiveTarget === 'new'; reset to a fresh guess
+  // whenever scope changes or "+ New rank set..." is (re-)selected, so it
+  // never carries a stale name from a different scope into a save.
+  const [newSetName, setNewSetName] = useState(() =>
+    defaultRankSetName('overall'),
+  )
   // A loaded rank set already carries name/position/team on every row, so the
   // working list can show them without depending on whichever sources happen
   // to be selected right now -- a player in your own list who isn't covered
@@ -333,19 +348,24 @@ export function BuildPage({ platform, format }: BuildPageProps) {
     if (next === 'new') {
       dispatch({ type: 'reset', order: [] })
       setAutoLoadedFor(`${scope}:new`)
+      setNewSetName(defaultRankSetName(scope))
     } else {
       setAutoLoadedFor(null) // lets the effect above load it
     }
   }
 
   async function handleSave() {
+    if (effectiveTarget === 'new' && newSetName.trim() === '') {
+      setError('Give the new rank set a name')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
       let setId = typeof effectiveTarget === 'number' ? effectiveTarget : null
       if (setId === null) {
         const created = await createRankSet({
-          name: scope === 'overall' ? 'Built list' : `My ${scope}s`,
+          name: newSetName.trim(),
           season: SEASON,
           format,
           platform,
@@ -404,6 +424,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
                 setTargetChoice(null)
                 setSaveMessage(null)
                 dispatch({ type: 'reset', order: [] })
+                setNewSetName(defaultRankSetName(value))
               }}
             >
               {value === 'overall' ? 'Overall' : value}
@@ -427,6 +448,16 @@ export function BuildPage({ platform, format }: BuildPageProps) {
             </option>
           ))}
         </select>
+
+        {effectiveTarget === 'new' && (
+          <input
+            className="build-new-set-name"
+            value={newSetName}
+            onChange={(e) => setNewSetName(e.target.value)}
+            aria-label="New rank set name"
+            placeholder="Name this rank set"
+          />
+        )}
 
         <button
           type="button"

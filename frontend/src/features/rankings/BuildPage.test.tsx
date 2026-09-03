@@ -75,10 +75,13 @@ function mockBackend(
   options: {
     rankSets?: { id: number; name: string; scope: string }[]
     ranksBySetId?: Record<number, unknown[]>
+    /** Lets a test simulate the backend rejecting a create, e.g. a duplicate
+     * name -- returns this instead of a 200 for POST /rank-sets. */
+    createRankSetError?: string
   } = {},
 ) {
-  const { rankSets = [], ranksBySetId = {} } = options
-  const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+  const { rankSets = [], ranksBySetId = {}, createRankSetError } = options
+  const fetchMock = vi.fn((url: string, init?: RequestInit) => {
     const { pathname } = new URL(url)
     if (pathname === '/rank-sources')
       return Promise.resolve(jsonResponse(SOURCES))
@@ -86,6 +89,30 @@ function mockBackend(
     if (setRanksMatch) {
       const id = Number(setRanksMatch[1])
       return Promise.resolve(jsonResponse(ranksBySetId[id] ?? []))
+    }
+    if (pathname === '/rank-sets' && init?.method === 'POST') {
+      if (createRankSetError) {
+        return Promise.resolve({
+          ok: false,
+          status: 400,
+          json: () => Promise.resolve({ detail: createRankSetError }),
+        })
+      }
+      const body = JSON.parse((init.body as string) ?? '{}') as {
+        name: string
+        scope: string
+      }
+      return Promise.resolve(
+        jsonResponse({
+          id: 999,
+          name: body.name,
+          scope: body.scope,
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          player_count: 0,
+        }),
+      )
     }
     if (pathname === '/rank-sets')
       return Promise.resolve(jsonResponse(rankSets))
@@ -625,5 +652,138 @@ describe('source priority order', () => {
     expect(labels[0]).toContain('WR only')
     expect(labels[1]).toContain('FantasyPros')
     expect(labels[2]).toContain('ADP')
+  })
+})
+
+describe('naming a new rank set', () => {
+  it('shows an editable name, pre-filled with a scope-based guess, only when creating new', async () => {
+    await renderBuild()
+
+    // Overall scope, nothing existing for it -- "+ New rank set..." is
+    // already the effective choice, so the field is visible from the start.
+    expect(
+      (screen.getByLabelText('New rank set name') as HTMLInputElement).value,
+    ).toBe('Built list')
+  })
+
+  it('hides the name field once an existing set is the target', async () => {
+    mockBackend(PLAYERS, {
+      rankSets: [{ id: 9, name: 'My QBs', scope: 'QB' }],
+      ranksBySetId: { 9: [] },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByRole('combobox', {
+            name: 'Rank set',
+          }) as HTMLSelectElement
+        ).value,
+      ).toBe('9')
+    })
+    expect(screen.queryByLabelText('New rank set name')).toBeNull()
+  })
+
+  it('updates the guess when you switch scope', async () => {
+    await renderBuild()
+    expect(
+      (screen.getByLabelText('New rank set name') as HTMLInputElement).value,
+    ).toBe('Built list')
+
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText('New rank set name') as HTMLInputElement).value,
+      ).toBe('My QBs')
+    })
+  })
+
+  it('lets you rename it before saving, and creates it under that name', async () => {
+    // The bug this covers: the guessed name was the only name a new set could
+    // ever get, so a second QB build collided with "My QBs" and had no way to
+    // be renamed to something that would save.
+    const fetchMock = mockBackend()
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByLabelText('New rank set name'), {
+      target: { value: 'My QBs (backup)' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (url as string).endsWith('/rank-sets') &&
+          (init as RequestInit)?.method === 'POST',
+      )
+      expect(post).toBeDefined()
+    })
+    const post = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        (url as string).endsWith('/rank-sets') &&
+        (init as RequestInit)?.method === 'POST',
+    )
+    if (!post) throw new Error('no create request was made')
+    const body = JSON.parse((post[1] as RequestInit).body as string) as {
+      name: string
+    }
+    expect(body.name).toBe('My QBs (backup)')
+  })
+
+  it('refuses to save with a blank name, without hitting the network', async () => {
+    const fetchMock = mockBackend()
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+    fireEvent.change(screen.getByLabelText('New rank set name'), {
+      target: { value: '   ' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(
+      await screen.findByText('Give the new rank set a name'),
+    ).toBeInTheDocument()
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          (url as string).endsWith('/rank-sets') &&
+          (init as RequestInit)?.method === 'POST',
+      ),
+    ).toBe(false)
+  })
+
+  it('surfaces a name collision from the backend so it can be corrected', async () => {
+    mockBackend(PLAYERS, {
+      createRankSetError:
+        "A rank set named 'My QBs' already exists for this format",
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(
+      await screen.findByText(/My QBs' already exists/),
+    ).toBeInTheDocument()
+    // The field survives the failure -- this is exactly where it needed to be
+    // reachable, so the name can be corrected and Save tried again.
+    expect(screen.getByLabelText('New rank set name')).toBeInTheDocument()
   })
 })

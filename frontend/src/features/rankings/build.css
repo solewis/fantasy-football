@@ -453,6 +453,16 @@ li:hover > .build-insert-here,
   letter-spacing: 0;
 }
 
+.build-new-set-name {
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #33322f);
+  background: var(--surface-2, #1e1e1c);
+  color: var(--text-primary, #fff);
+  min-width: 160px;
+}
+
 .build-table-footer {
   display: flex;
   align-items: center;

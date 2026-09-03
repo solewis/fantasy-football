@@ -17,6 +17,7 @@ import {
 } from '../../api/ranks'
 import type { SupportedPlatform } from '../../components/PlatformTabs'
 import type { PoolPlayer } from '../../api/rankPool'
+import { parseStoredBuildDraft, reconcileSelection } from '../../lib/buildDraft'
 import { summarizeCandidates } from '../../lib/consensus'
 import { BUILD_POSITIONS, SEASON, type BuildPosition } from '../../lib/formats'
 import {
@@ -57,13 +58,40 @@ function defaultRankSetName(scope: Scope): string {
  * The whole pool arrives in one request and every delta recomputes locally on
  * each pick, so the loop is click-click-click with no round trips.
  */
+function isScope(value: string): value is Scope {
+  return (
+    value === 'overall' ||
+    (BUILD_POSITIONS as readonly string[]).includes(value)
+  )
+}
+
 export function BuildPage({ platform, format }: BuildPageProps) {
-  const [scope, setScope] = useState<Scope>('overall')
+  // Rankings is a top-level tab -- switching to Leagues or Players fully
+  // unmounts this component (see App.tsx), so without this every in-progress
+  // pick and source selection was gone the moment you navigated away and
+  // back, even though you'd never explicitly discarded anything. Restored
+  // silently (not prompted) on mount, since the point is that it should feel
+  // like nothing was ever lost. Read once here in an initializer -- like
+  // sourceOrder below, a platform/format change remounts this component
+  // entirely, so there's no later point where this needs re-reading.
+  const buildDraftKey = `fantasy-draft-app:buildDraft:${platform}:${format}`
+  const [storedDraft] = useState(() =>
+    parseStoredBuildDraft(localStorage.getItem(buildDraftKey)),
+  )
+
+  const [scope, setScope] = useState<Scope>(() =>
+    storedDraft && isScope(storedDraft.scope) ? storedDraft.scope : 'overall',
+  )
   // Everything loaded is selected by default. You imported a ranking file in
   // order to compare against it, and the previous default (ADP only) meant a
   // freshly imported dataset sat unchecked in the rail while the table showed
-  // a single column -- which reads as "my import didn't work".
-  const [selectedRefs, setSelectedRefs] = useState<string[]>(['adp'])
+  // a single column -- which reads as "my import didn't work". A restored
+  // draft's selection is reconciled against what's actually available once
+  // sources load (see the effect below), so this initial value only matters
+  // for the brief window before that first fetch resolves.
+  const [selectedRefs, setSelectedRefs] = useState<string[]>(
+    () => storedDraft?.selectedRefs ?? ['adp'],
+  )
   const [available, setAvailable] = useState<AvailableSource[]>([])
   const [pool, setPool] = useState<RankPool | null>(null)
   const [rankSets, setRankSets] = useState<RankSetSummary[]>([])
@@ -72,12 +100,14 @@ export function BuildPage({ platform, format }: BuildPageProps) {
   // 'new' is a real, distinct choice -- it used to collapse onto "no choice",
   // which meant picking "New rank set..." from the dropdown silently fell
   // back to editing whatever set already existed for the scope.
-  const [targetChoice, setTargetChoice] = useState<number | 'new' | null>(null)
+  const [targetChoice, setTargetChoice] = useState<number | 'new' | null>(
+    () => storedDraft?.targetChoice ?? null,
+  )
   // Only meaningful while effectiveTarget === 'new'; reset to a fresh guess
   // whenever scope changes or "+ New rank set..." is (re-)selected, so it
   // never carries a stale name from a different scope into a save.
-  const [newSetName, setNewSetName] = useState(() =>
-    defaultRankSetName('overall'),
+  const [newSetName, setNewSetName] = useState(
+    () => storedDraft?.newSetName ?? defaultRankSetName('overall'),
   )
   // A loaded rank set already carries name/position/team on every row, so the
   // working list can show them without depending on whichever sources happen
@@ -123,9 +153,52 @@ export function BuildPage({ platform, format }: BuildPageProps) {
     setSourceOrder((prev) => moveInOrder(prev, ref, direction))
   }
 
-  const [state, dispatch] = useReducer(buildReducer, undefined, () =>
-    initialBuildState(),
-  )
+  const [state, dispatch] = useReducer(buildReducer, undefined, () => {
+    const base = initialBuildState(
+      storedDraft?.order ?? [],
+      storedDraft?.breaks ?? {},
+      storedDraft?.flags ?? {},
+    )
+    // initialBuildState always starts clean; restoring a draft that had
+    // unsaved changes needs to carry that forward, or the next scope/target
+    // switch would discard it silently instead of confirming first.
+    return storedDraft?.dirty ? { ...base, dirty: true } : base
+  })
+
+  // Autosaves the in-progress build on every change, so navigating away to a
+  // different top-level tab and back restores exactly where you left off --
+  // see buildDraft.ts. Deliberately not gated on `state.dirty`: the point is
+  // to survive a full unmount, and a just-saved state is harmless to persist
+  // too (restoring it again is a no-op against the backend).
+  useEffect(() => {
+    try {
+      const draft = {
+        scope,
+        targetChoice,
+        newSetName,
+        order: state.order,
+        breaks: state.breaks,
+        flags: state.flags,
+        dirty: state.dirty,
+        selectedRefs,
+        knownRefs: available.map((s) => s.ref),
+      }
+      localStorage.setItem(buildDraftKey, JSON.stringify(draft))
+    } catch {
+      // private mode / storage disabled -- progress just won't be remembered
+    }
+  }, [
+    buildDraftKey,
+    scope,
+    targetChoice,
+    newSetName,
+    state.order,
+    state.breaks,
+    state.flags,
+    state.dirty,
+    selectedRefs,
+    available,
+  ])
 
   // Effect C: which sources exist. Never touches the pool.
   const [sourcesLoadedKey, setSourcesLoadedKey] = useState<string | null>(null)
@@ -141,7 +214,16 @@ export function BuildPage({ platform, format }: BuildPageProps) {
         if (cancelled) return
         setAvailable(sources)
         setRankSets(sets)
-        setSelectedRefs(sources.map((s) => s.ref))
+        // A ref you'd already deliberately unchecked stays unchecked; a
+        // brand-new one (a freshly imported dataset, a newly built rank set)
+        // still defaults to checked, matching the pre-persistence behaviour.
+        setSelectedRefs((prev) =>
+          reconcileSelection(
+            prev,
+            storedDraft?.knownRefs ?? [],
+            sources.map((s) => s.ref),
+          ),
+        )
         // A freshly imported dataset or newly built rank set joins at the
         // back of the priority order rather than resetting it.
         setSourceOrder((prev) =>
@@ -163,6 +245,11 @@ export function BuildPage({ platform, format }: BuildPageProps) {
     return () => {
       cancelled = true
     }
+    // storedDraft omitted deliberately: it's read once at mount and never
+    // updated, so it can't go stale, and platform/format changing already
+    // remounts this component (a fresh storedDraft) rather than re-running
+    // this effect in place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platform, format])
 
   // A source that can't serve the current axis is deselected rather than
@@ -327,8 +414,15 @@ export function BuildPage({ platform, format }: BuildPageProps) {
 
   // Loads automatically on mount and on a scope switch, when a set for that
   // scope already exists -- not on every render, and not fighting a pick
-  // that's already in progress.
-  const [autoLoadedFor, setAutoLoadedFor] = useState<string | null>(null)
+  // that's already in progress. Pre-seeded when a restored draft already has
+  // a numeric target: otherwise this effect would immediately re-fetch that
+  // set's last-*saved* backend contents on mount, overwriting the very
+  // unsaved picks the draft exists to protect.
+  const [autoLoadedFor, setAutoLoadedFor] = useState<string | null>(() =>
+    storedDraft && typeof storedDraft.targetChoice === 'number'
+      ? `${storedDraft.scope}:${storedDraft.targetChoice}`
+      : null,
+  )
   useEffect(() => {
     if (typeof effectiveTarget !== 'number') return
     const key = `${scope}:${effectiveTarget}`

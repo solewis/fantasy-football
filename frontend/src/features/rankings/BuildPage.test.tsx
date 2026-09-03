@@ -1035,3 +1035,140 @@ describe('multiple positional rank sets per position', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('build progress survives navigating away and back', () => {
+  // Rankings is a top-level tab -- switching to Leagues or Players fully
+  // unmounts BuildPage (see App.tsx), so an unmount+remount here is exactly
+  // what "leave the page and come back" does. Every usable source loads
+  // selected by default, so unchecking one is the one selection change these
+  // tests can make and later detect.
+
+  it('restores in-progress picks after an unmount and remount', async () => {
+    const { unmount } = await (async () => {
+      mockBackend()
+      const view = render(<BuildPage platform="sleeper" format="half_ppr" />)
+      await screen.findByText("Ja'Marr Chase")
+      fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+      await waitFor(() => {
+        expect(screen.getByText('My list (1)')).toBeInTheDocument()
+      })
+      return view
+    })()
+    unmount()
+
+    mockBackend()
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText('My list (1)')
+  })
+
+  it('restores an unchecked source after an unmount and remount', async () => {
+    const { unmount } = await (async () => {
+      mockBackend()
+      const view = render(<BuildPage platform="sleeper" format="half_ppr" />)
+      await screen.findByText("Ja'Marr Chase")
+      await waitFor(() => {
+        expect(
+          screen.getByRole('checkbox', { name: /FantasyPros/ }),
+        ).toBeChecked()
+      })
+      fireEvent.click(screen.getByRole('checkbox', { name: /FantasyPros/ }))
+      await waitFor(() => {
+        expect(
+          screen.getByRole('checkbox', { name: /FantasyPros/ }),
+        ).not.toBeChecked()
+      })
+      return view
+    })()
+    unmount()
+
+    mockBackend()
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /FantasyPros/ }),
+      ).not.toBeChecked()
+    })
+    // A source you never touched keeps its default.
+    expect(screen.getByRole('checkbox', { name: /ADP/ })).toBeChecked()
+  })
+
+  it('restores the active scope and target rank set after an unmount and remount', async () => {
+    const options = {
+      rankSets: [
+        {
+          id: 9,
+          name: 'My QBs',
+          scope: 'QB',
+          platform: 'sleeper',
+          is_active: true,
+        },
+      ],
+      ranksBySetId: {
+        9: [
+          {
+            rank: 1,
+            platform_player_id: 'q1',
+            name: 'Josh Allen',
+            position: 'QB',
+            team: 'BUF',
+            adp: 20,
+            tier: null,
+            break_after: null,
+            flag: null,
+          },
+        ],
+      },
+    }
+    const { unmount } = await (async () => {
+      mockBackend(PLAYERS, options)
+      const view = render(<BuildPage platform="sleeper" format="half_ppr" />)
+      await screen.findByText("Ja'Marr Chase")
+      fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+      await waitFor(() => {
+        expect(screen.getByText('Josh Allen')).toBeInTheDocument()
+      })
+      return view
+    })()
+    unmount()
+
+    mockBackend(PLAYERS, options)
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'QB' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+    })
+    expect(await screen.findByText('Josh Allen')).toBeInTheDocument()
+  })
+
+  it('still confirms before discarding restored unsaved picks on a scope switch', async () => {
+    const { unmount } = await (async () => {
+      mockBackend()
+      const view = render(<BuildPage platform="sleeper" format="half_ppr" />)
+      await screen.findByText("Ja'Marr Chase")
+      fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+      await waitFor(() => {
+        expect(screen.getByText('My list (1)')).toBeInTheDocument()
+      })
+      return view
+    })()
+    unmount()
+
+    mockBackend()
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText('My list (1)')
+
+    // Restoring unsaved picks must not read as "clean" -- otherwise the very
+    // next scope switch would discard them with no warning at all.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    confirmSpy.mockRestore()
+  })
+})

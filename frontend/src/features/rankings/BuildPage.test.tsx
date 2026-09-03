@@ -70,12 +70,25 @@ const DEEP_PLAYERS = Array.from({ length: 30 }, (_, i) => ({
   ranks: { adp: i + 1, 'dataset:1': i + 1 },
 }))
 
-function mockBackend(players = PLAYERS) {
+function mockBackend(
+  players = PLAYERS,
+  options: {
+    rankSets?: { id: number; name: string; scope: string }[]
+    ranksBySetId?: Record<number, unknown[]>
+  } = {},
+) {
+  const { rankSets = [], ranksBySetId = {} } = options
   const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
     const { pathname } = new URL(url)
     if (pathname === '/rank-sources')
       return Promise.resolve(jsonResponse(SOURCES))
-    if (pathname === '/rank-sets') return Promise.resolve(jsonResponse([]))
+    const setRanksMatch = /^\/rank-sets\/(\d+)\/ranks$/.exec(pathname)
+    if (setRanksMatch) {
+      const id = Number(setRanksMatch[1])
+      return Promise.resolve(jsonResponse(ranksBySetId[id] ?? []))
+    }
+    if (pathname === '/rank-sets')
+      return Promise.resolve(jsonResponse(rankSets))
     if (pathname === '/rank-pool') {
       return Promise.resolve(
         jsonResponse({
@@ -386,5 +399,128 @@ describe('BuildPage', () => {
     // The tool reports what sources think; it never marks a suggested pick.
     expect(screen.queryByText(/recommend/i)).toBeNull()
     expect(screen.queryByText(/suggested/i)).toBeNull()
+  })
+})
+
+describe('loading an existing target set', () => {
+  const QB_RANKS = [
+    {
+      rank: 1,
+      platform_player_id: 'q1',
+      name: 'Josh Allen',
+      position: 'QB',
+      team: 'BUF',
+      adp: 20,
+      tier: 1,
+      break_after: 'major',
+      flag: 'target',
+    },
+    {
+      rank: 2,
+      platform_player_id: 'q2',
+      name: 'Lamar Jackson',
+      position: 'QB',
+      team: 'BAL',
+      adp: 25,
+      tier: 2,
+      break_after: null,
+      flag: null,
+    },
+  ]
+
+  it('populates My list from a set that already exists for the scope', async () => {
+    // The bug this covers: "My QBs" showed up in the dropdown, correctly
+    // selected, but the working list stayed empty -- nothing ever fetched the
+    // set's saved contents.
+    mockBackend(PLAYERS, {
+      rankSets: [{ id: 9, name: 'My QBs', scope: 'QB' }],
+      ranksBySetId: { 9: QB_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('My list (2)')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Josh Allen')).toBeInTheDocument()
+    expect(screen.getByText('Lamar Jackson')).toBeInTheDocument()
+  })
+
+  it('carries over tier breaks and flags from the loaded set', async () => {
+    mockBackend(PLAYERS, {
+      rankSets: [{ id: 9, name: 'My QBs', scope: 'QB' }],
+      ranksBySetId: { 9: QB_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('My list (2)')).toBeInTheDocument()
+    })
+    // The loaded break is 'major', so the divider reads "Tier 2 · big drop".
+    expect(screen.getByText(/Tier 2/)).toBeInTheDocument()
+    expect(screen.getByText(/big drop/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Clear target on Josh Allen/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('starts empty when "+ New rank set…" is chosen despite an existing set', async () => {
+    // Related bug: picking "New rank set..." used to silently fall back to
+    // whatever set already existed for the scope, because there was no way to
+    // distinguish "no explicit choice" from "explicitly wants a new one".
+    mockBackend(PLAYERS, {
+      rankSets: [{ id: 9, name: 'My QBs', scope: 'QB' }],
+      ranksBySetId: { 9: QB_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+    await waitFor(() => {
+      expect(screen.getByText('My list (2)')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Rank set' }), {
+      target: { value: 'new' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('My list (0)')).toBeInTheDocument()
+    })
+  })
+
+  it('confirms before discarding unsaved picks when switching target sets', async () => {
+    mockBackend(PLAYERS, {
+      rankSets: [
+        { id: 9, name: 'My QBs', scope: 'QB' },
+        { id: 10, name: 'My Backup QBs', scope: 'QB' },
+      ],
+      ranksBySetId: { 9: QB_RANKS, 10: [] },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+    await waitFor(() => {
+      expect(screen.getByText('My list (2)')).toBeInTheDocument()
+    })
+    // Make an additional, unsaved pick on top of the loaded list.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Pick' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('My list (3)')).toBeInTheDocument()
+    })
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Rank set' }), {
+      target: { value: '10' },
+    })
+
+    expect(confirmSpy).toHaveBeenCalled()
+    // Declined -- the in-progress list survives untouched.
+    expect(screen.getByText('My list (3)')).toBeInTheDocument()
+    confirmSpy.mockRestore()
   })
 })

@@ -8,11 +8,13 @@ import {
 } from '../../api/rankPool'
 import {
   createRankSet,
+  fetchRanksForSet,
   fetchRankSets,
   saveRanksForSet,
   type RankSetSummary,
 } from '../../api/ranks'
 import type { SupportedPlatform } from '../../components/PlatformTabs'
+import type { PoolPlayer } from '../../api/rankPool'
 import { summarizeCandidates } from '../../lib/consensus'
 import { BUILD_POSITIONS, SEASON, type BuildPosition } from '../../lib/formats'
 import {
@@ -53,7 +55,19 @@ export function BuildPage({ platform, format }: BuildPageProps) {
   const [available, setAvailable] = useState<AvailableSource[]>([])
   const [pool, setPool] = useState<RankPool | null>(null)
   const [rankSets, setRankSets] = useState<RankSetSummary[]>([])
-  const [targetSetId, setTargetSetId] = useState<number | null>(null)
+  // null = no explicit choice yet, so the default logic below picks the
+  // first existing set for this scope (or 'new' when there isn't one).
+  // 'new' is a real, distinct choice -- it used to collapse onto "no choice",
+  // which meant picking "New rank set..." from the dropdown silently fell
+  // back to editing whatever set already existed for the scope.
+  const [targetChoice, setTargetChoice] = useState<number | 'new' | null>(null)
+  // A loaded rank set already carries name/position/team on every row, so the
+  // working list can show them without depending on whichever sources happen
+  // to be selected right now -- a player in your own list who isn't covered
+  // by the current source selection would otherwise render as a bare id.
+  const [knownPlayers, setKnownPlayers] = useState<Map<string, PoolPlayer>>(
+    new Map(),
+  )
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -159,12 +173,15 @@ export function BuildPage({ platform, format }: BuildPageProps) {
   )
 
   const playersById = useMemo(() => {
-    const map = new Map<string, RankPool['players'][number]>()
+    // The pool is authoritative when it has an opinion (fresher ranks/ADP);
+    // knownPlayers only fills in identity for a player the current source
+    // selection doesn't cover.
+    const map = new Map<string, PoolPlayer>(knownPlayers)
     for (const player of activePool?.players ?? []) {
       map.set(player.platform_player_id, player)
     }
     return map
-  }, [activePool])
+  }, [activePool, knownPlayers])
 
   // Only overall builds have a "yours" panel; positional sets ARE the thing
   // being built when scope is a position.
@@ -180,13 +197,95 @@ export function BuildPage({ platform, format }: BuildPageProps) {
     [rankSets, scope],
   )
 
-  const effectiveTargetSetId = targetSetId ?? targetSets[0]?.id ?? null
+  const effectiveTarget = targetChoice ?? targetSets[0]?.id ?? 'new'
+
+  // Loads an existing target set's saved order into the working list, so
+  // "My QBs" showing in this dropdown actually means something -- it used to
+  // just be where a save would land, with nothing ever loading its contents,
+  // which is why a set you'd already built looked empty here.
+  async function loadTarget(setId: number) {
+    setError(null)
+    try {
+      const rows = await fetchRanksForSet(setId)
+      setKnownPlayers((prev) => {
+        const next = new Map(prev)
+        for (const row of rows) {
+          next.set(row.platform_player_id, {
+            platform_player_id: row.platform_player_id,
+            name: row.name,
+            position: row.position,
+            team: row.team,
+            adp: row.adp,
+            ranks: {},
+          })
+        }
+        return next
+      })
+      const breaks: Record<string, 'major' | 'minor'> = {}
+      const flags: Record<string, 'target' | 'fade'> = {}
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i]
+        if (row.flag) flags[row.platform_player_id] = row.flag
+        // A saved list keys tiers by number, not by an explicit break -- the
+        // divider belongs on whichever player the tier changes after.
+        const prior = rows[i - 1]
+        if (prior && prior.tier !== null && row.tier !== prior.tier) {
+          breaks[prior.platform_player_id] = prior.break_after ?? 'minor'
+        }
+      }
+      dispatch({
+        type: 'reset',
+        order: rows.map((r) => r.platform_player_id),
+        breaks,
+        flags,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load rank set')
+    }
+  }
+
+  // Loads automatically on mount and on a scope switch, when a set for that
+  // scope already exists -- not on every render, and not fighting a pick
+  // that's already in progress.
+  const [autoLoadedFor, setAutoLoadedFor] = useState<string | null>(null)
+  useEffect(() => {
+    if (typeof effectiveTarget !== 'number') return
+    const key = `${scope}:${effectiveTarget}`
+    if (autoLoadedFor === key) return
+    setAutoLoadedFor(key)
+    void loadTarget(effectiveTarget)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadTarget closes
+    // over dispatch, which useReducer guarantees is stable.
+  }, [scope, effectiveTarget, autoLoadedFor])
+
+  function handleTargetChange(next: number | 'new') {
+    // Switching to a different existing list while you have unsaved picks
+    // would silently throw them away -- this is the one place in the builder
+    // that can discard work outright, so it's the one place worth a native
+    // confirm() rather than the app's usual two-click inline pattern.
+    if (
+      state.dirty &&
+      !window.confirm(
+        'Switch lists? Your unsaved picks in the current list will be lost.',
+      )
+    ) {
+      return
+    }
+    setTargetChoice(next)
+    setSaveMessage(null)
+    if (next === 'new') {
+      dispatch({ type: 'reset', order: [] })
+      setAutoLoadedFor(`${scope}:new`)
+    } else {
+      setAutoLoadedFor(null) // lets the effect above load it
+    }
+  }
 
   async function handleSave() {
     setSaving(true)
     setError(null)
     try {
-      let setId = effectiveTargetSetId
+      let setId = typeof effectiveTarget === 'number' ? effectiveTarget : null
       if (setId === null) {
         const created = await createRankSet({
           name: scope === 'overall' ? 'Built list' : `My ${scope}s`,
@@ -198,7 +297,8 @@ export function BuildPage({ platform, format }: BuildPageProps) {
         })
         setId = created.id
         setRankSets((sets) => [...sets, created])
-        setTargetSetId(created.id)
+        setTargetChoice(created.id)
+        setAutoLoadedFor(`${scope}:${created.id}`)
       }
       const tiers = tiersForOrder(state.order, state.breaks)
       const result = await saveRanksForSet(
@@ -235,10 +335,16 @@ export function BuildPage({ platform, format }: BuildPageProps) {
               aria-selected={scope === value}
               className={`build-scope-tab${scope === value ? ' active' : ''}`}
               onClick={() => {
-                // Switching axis invalidates the list being built, so reset
-                // here rather than in an effect watching scope.
+                if (
+                  state.dirty &&
+                  !window.confirm(
+                    'Switch positions? Your unsaved picks will be lost.',
+                  )
+                ) {
+                  return
+                }
                 setScope(value)
-                setTargetSetId(null)
+                setTargetChoice(null)
                 setSaveMessage(null)
                 dispatch({ type: 'reset', order: [] })
               }}
@@ -249,15 +355,15 @@ export function BuildPage({ platform, format }: BuildPageProps) {
         </div>
 
         <select
-          value={effectiveTargetSetId ?? ''}
-          aria-label="Save to rank set"
+          value={effectiveTarget}
+          aria-label="Rank set"
           onChange={(e) =>
-            setTargetSetId(
-              e.target.value === '' ? null : Number(e.target.value),
+            handleTargetChange(
+              e.target.value === 'new' ? 'new' : Number(e.target.value),
             )
           }
         >
-          <option value="">New rank set…</option>
+          <option value="new">+ New rank set…</option>
           {targetSets.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}

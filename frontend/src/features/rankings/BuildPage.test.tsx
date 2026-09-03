@@ -121,6 +121,7 @@ function mockBackend(
 
 beforeEach(() => {
   vi.unstubAllGlobals()
+  localStorage.clear()
 })
 
 async function renderBuild() {
@@ -522,5 +523,107 @@ describe('loading an existing target set', () => {
     // Declined -- the in-progress list survives untouched.
     expect(screen.getByText('My list (3)')).toBeInTheDocument()
     confirmSpy.mockRestore()
+  })
+})
+
+describe('source priority order', () => {
+  function sourceRowLabels() {
+    return screen
+      .getAllByRole('checkbox')
+      .map((checkbox) => checkbox.closest('label')?.textContent ?? '')
+  }
+
+  function columnHeaderOrder() {
+    return screen.getAllByRole('columnheader').map((th) => th.textContent ?? '')
+  }
+
+  it('lists sources in priority order, and moves a source up', async () => {
+    await renderBuild()
+
+    // Default order is whatever the backend returned: ADP, FantasyPros, WR only.
+    expect(sourceRowLabels()[0]).toContain('ADP')
+    expect(sourceRowLabels()[1]).toContain('FantasyPros')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move FantasyPros up' }))
+
+    await waitFor(() => {
+      expect(sourceRowLabels()[0]).toContain('FantasyPros')
+    })
+    expect(sourceRowLabels()[1]).toContain('ADP')
+  })
+
+  it('reorders the candidate table columns to match', async () => {
+    // The whole point: dragging a source up in the picker moves its column
+    // left in the table, without needing to refetch the pool.
+    await renderBuild()
+    expect(columnHeaderOrder().indexOf('ADP')).toBeLessThan(
+      columnHeaderOrder().indexOf('FantasyPros'),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move FantasyPros up' }))
+
+    await waitFor(() => {
+      expect(columnHeaderOrder().indexOf('FantasyPros')).toBeLessThan(
+        columnHeaderOrder().indexOf('ADP'),
+      )
+    })
+  })
+
+  it('disables the move buttons at each end of the list', async () => {
+    await renderBuild()
+
+    expect(screen.getByRole('button', { name: 'Move ADP up' })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Move WR only down' }),
+    ).toBeDisabled()
+  })
+
+  it('keeps the priority order across a remount', async () => {
+    // Persisted per platform/format so it doesn't need resetting every visit.
+    const { unmount } = await (async () => {
+      mockBackend()
+      const view = render(<BuildPage platform="sleeper" format="half_ppr" />)
+      await screen.findByText("Ja'Marr Chase")
+      await waitFor(() => {
+        expect(
+          screen.getByRole('columnheader', { name: 'FantasyPros' }),
+        ).toBeInTheDocument()
+      })
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Move FantasyPros up' }),
+      )
+      await waitFor(() => {
+        expect(columnHeaderOrder().indexOf('FantasyPros')).toBeLessThan(
+          columnHeaderOrder().indexOf('ADP'),
+        )
+      })
+      return view
+    })()
+    unmount()
+
+    mockBackend()
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+
+    await waitFor(() => {
+      expect(columnHeaderOrder().indexOf('FantasyPros')).toBeLessThan(
+        columnHeaderOrder().indexOf('ADP'),
+      )
+    })
+  })
+
+  it('appends a newly available source at the end rather than resetting the order', async () => {
+    // A freshly imported dataset joining at the front would silently bump
+    // everything you'd already arranged.
+    localStorage.setItem(
+      'fantasy-draft-app:sourceOrder:sleeper:half_ppr',
+      JSON.stringify(['dataset:2', 'dataset:1']),
+    )
+    await renderBuild()
+
+    const labels = sourceRowLabels()
+    expect(labels[0]).toContain('WR only')
+    expect(labels[1]).toContain('FantasyPros')
+    expect(labels[2]).toContain('ADP')
   })
 })

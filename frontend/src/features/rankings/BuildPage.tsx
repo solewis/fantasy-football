@@ -23,6 +23,7 @@ import {
   nextSlot,
   tiersForOrder,
 } from '../../lib/rankBuilder'
+import { moveInOrder, reconcileOrder, sortByOrder } from '../../lib/sourceOrder'
 import { BuildCandidateTable } from './BuildCandidateTable'
 import { BuildPositionalNextUp } from './BuildPositionalNextUp'
 import { BuildSourcePicker } from './BuildSourcePicker'
@@ -72,6 +73,38 @@ export function BuildPage({ platform, format }: BuildPageProps) {
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
+  // A personal priority order over sources -- independent of which are
+  // checked, and remembered across visits so it doesn't need resetting every
+  // time. Keyed per platform/format since the available sources differ per
+  // scope; BuildPage remounts on either changing (see RankingsSection), so
+  // reading it once here in the initializer is enough -- no effect needed to
+  // react to a change that would unmount this component anyway.
+  const sourceOrderKey = `fantasy-draft-app:sourceOrder:${platform}:${format}`
+  const [sourceOrder, setSourceOrder] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(sourceOrderKey)
+      if (!raw) return []
+      const parsed: unknown = JSON.parse(raw)
+      return Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')
+        ? parsed
+        : []
+    } catch {
+      return []
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(sourceOrderKey, JSON.stringify(sourceOrder))
+    } catch {
+      // private mode / storage disabled -- the order just won't be remembered
+    }
+  }, [sourceOrder, sourceOrderKey])
+
+  function moveSource(ref: string, direction: 'up' | 'down') {
+    setSourceOrder((prev) => moveInOrder(prev, ref, direction))
+  }
+
   const [state, dispatch] = useReducer(buildReducer, undefined, () =>
     initialBuildState(),
   )
@@ -91,6 +124,14 @@ export function BuildPage({ platform, format }: BuildPageProps) {
         setAvailable(sources)
         setRankSets(sets)
         setSelectedRefs(sources.map((s) => s.ref))
+        // A freshly imported dataset or newly built rank set joins at the
+        // back of the priority order rather than resetting it.
+        setSourceOrder((prev) =>
+          reconcileOrder(
+            prev,
+            sources.map((s) => s.ref),
+          ),
+        )
       })
       .catch((err: unknown) => {
         if (!cancelled)
@@ -160,6 +201,22 @@ export function BuildPage({ platform, format }: BuildPageProps) {
   // Derived rather than cleared in an effect: with nothing selected there is
   // no pool, and the last one shouldn't linger on screen.
   const activePool = hasSources ? pool : null
+
+  // The picker's row order and the candidate table's column order both come
+  // from the same priority list, so dragging a source up here is exactly
+  // what moves its column left there.
+  const orderedAvailable = useMemo(
+    () => sortByOrder(available, sourceOrder, (s) => s.ref),
+    [available, sourceOrder],
+  )
+  const orderedActiveSources = useMemo(
+    () =>
+      activePool
+        ? sortByOrder(activePool.sources, sourceOrder, (s) => s.ref)
+        : [],
+    [activePool, sourceOrder],
+  )
+
   const placed = useMemo(() => new Set(state.order), [state.order])
   const slot = nextSlot(state)
   const slotLabel = scope === 'overall' ? `#${slot}` : `${scope}${slot}`
@@ -422,7 +479,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
 
       <div className="build-grid">
         <BuildSourcePicker
-          sources={available}
+          sources={orderedAvailable}
           selectedRefs={selectedRefs}
           eligibleCount={eligibleRefs.length}
           scope={scope}
@@ -433,6 +490,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
                 : [...refs, ref],
             )
           }
+          onMove={moveSource}
         />
 
         <BuildWorkingList
@@ -468,7 +526,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
 
           <BuildCandidateTable
             candidates={candidates}
-            sources={activePool?.sources ?? []}
+            sources={orderedActiveSources}
             slot={slot}
             slotLabel={slotLabel}
             loading={loading}

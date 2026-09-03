@@ -92,6 +92,13 @@
   padding: 8px;
 }
 
+.build-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
 .build-source {
   display: flex;
   align-items: center;
@@ -99,6 +106,7 @@
   padding: 4px 2px;
   font-size: 13px;
   cursor: pointer;
+  min-width: 0;
 }
 
 .build-source.disabled {
@@ -110,6 +118,33 @@
 .build-source-note {
   font-size: 11px;
   color: var(--text-muted, #898781);
+}
+
+.build-source-move {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.build-source-move-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #898781);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.build-source-move-btn:hover:not(:disabled) {
+  color: var(--text-primary, #fff);
+  background: var(--surface-2, #1e1e1c);
+}
+
+.build-source-move-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .build-working-list {

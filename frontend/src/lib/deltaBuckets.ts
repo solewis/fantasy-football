@@ -70,6 +70,17 @@ export function formatDelta(delta: number | null): string {
   return delta > 0 ? `+${delta}` : `${delta}`
 }
 
+/** '4 (+3)' | '12 (-1)' | '5 (0)' | '—'. The chip's visible label -- the
+ * delta alone tells you the gap but not the actual number a source landed on,
+ * which is exactly what you'd otherwise have to hover the chip to find out. */
+export function formatRankAndDelta(
+  sourceRank: number | null,
+  delta: number | null,
+): string {
+  if (sourceRank === null || delta === null) return '—'
+  return `${sourceRank} (${formatDelta(delta)})`
+}
+
 /** The accessible description, so a chip never conveys its meaning by colour
  * alone. */
 export function describeDelta(

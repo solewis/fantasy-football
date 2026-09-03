@@ -5,6 +5,7 @@ import {
   deltaBucket,
   describeDelta,
   formatDelta,
+  formatRankAndDelta,
   PICK_BOUNDS,
   rankDelta,
 } from './deltaBuckets'
@@ -92,6 +93,17 @@ describe('formatDelta', () => {
     [-1, '-1'],
   ])('formats %s as %s', (delta, expected) => {
     expect(formatDelta(delta)).toBe(expected)
+  })
+})
+
+describe('formatRankAndDelta', () => {
+  it.each([
+    [null, null, '—'],
+    [4, 3, '4 (+3)'],
+    [1, -1, '1 (-1)'],
+    [5, 0, '5 (0)'],
+  ] as const)('formats rank %s / delta %s as %s', (rank, delta, expected) => {
+    expect(formatRankAndDelta(rank, delta)).toBe(expected)
   })
 })
 

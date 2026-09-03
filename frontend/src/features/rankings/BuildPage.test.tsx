@@ -202,10 +202,27 @@ describe('BuildPage', () => {
 
     const rows = screen.getAllByRole('row').slice(1)
     const names = rows.map((r) => r.textContent ?? '')
-    // Chase averages 1, Puka (2 and 3) averages 2.5, Jefferson only ADP ranks
+    // ADP doesn't count toward the average -- only FantasyPros does. Chase
+    // averages 1, Puka averages 3, Jefferson has no FantasyPros rank at all
+    // (only ADP), so he has no average and sorts last regardless.
     expect(names[0]).toContain("Ja'Marr Chase")
     expect(names[1]).toContain('Puka Nacua')
     expect(names[2]).toContain('Justin Jefferson')
+  })
+
+  it('does not count ADP toward the average, though it still shows as a column', async () => {
+    await renderBuild()
+
+    // Jefferson has an ADP rank but no FantasyPros rank, so with ADP excluded
+    // he has no average at all -- not "3.0" from ADP alone.
+    const jeffersonRow = screen
+      .getAllByRole('row')
+      .find((r) => r.textContent?.includes('Justin Jefferson'))
+    const avgCell = jeffersonRow?.querySelectorAll('td')[2]
+    expect(avgCell?.textContent).toBe('—')
+    expect(
+      screen.getByRole('columnheader', { name: 'ADP' }),
+    ).toBeInTheDocument()
   })
 
   it('puts Pick first so it survives a horizontal scroll', async () => {

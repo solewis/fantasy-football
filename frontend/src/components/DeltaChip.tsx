@@ -1,7 +1,7 @@
 import {
   deltaBucket,
   describeDelta,
-  formatDelta,
+  formatRankAndDelta,
   rankDelta,
   type DeltaBounds,
 } from '../lib/deltaBuckets'
@@ -24,8 +24,11 @@ interface DeltaChipProps {
 
 /** One source's opinion about one candidate, at the slot being filled.
  *
- * The signed number is always printed, so colour is never the only channel --
- * which is also what makes the palest steps' sub-3:1 contrast acceptable.
+ * Shows the source's actual rank alongside the signed delta -- "12 (+3)" --
+ * rather than the delta alone, so the number a source landed on is visible
+ * without hovering for the accessible description. The signed number is
+ * always printed too, so colour is never the only channel -- which is also
+ * what makes the palest steps' sub-3:1 contrast acceptable.
  */
 export function DeltaChip({
   sourceRank,
@@ -53,7 +56,7 @@ export function DeltaChip({
       data-missing={bucket.missing ? 'true' : undefined}
       title={label}
     >
-      <span aria-hidden="true">{formatDelta(delta)}</span>
+      <span aria-hidden="true">{formatRankAndDelta(sourceRank, delta)}</span>
       <span className="sr-only">{label}</span>
     </span>
   )

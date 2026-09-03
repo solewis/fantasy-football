@@ -36,12 +36,23 @@ export function isContested(candidate: CandidateSummary): boolean {
   return candidate.spread !== null && candidate.spread >= CONTESTED_SPREAD
 }
 
+/** ADP is shown as its own column -- comparing every source against where
+ * the field is drafting is useful context -- but it isn't a "source" in the
+ * sense the average/spread/coverage math means: it's a market estimate, not
+ * an opinion someone formed about this list. Folding it in also double-counts
+ * it against the sole use case for a positional build, where ADP would
+ * otherwise be one column among two or three ranking sources rather than the
+ * de facto tie-breaker it becomes once ranked prominently as an equal input.
+ */
+const ADP_REF = 'adp'
+
 /** Summarize and order the pool.
  *
  * Missing ranks are never imputed. The average is over the sources that have
  * an opinion, so a source that simply doesn't publish that deep can't drag a
  * player down -- and coverage is reported so the reader can discount a thin
- * average themselves.
+ * average themselves. ADP still appears in `ranks` (so its column keeps
+ * showing) but never contributes to average/min/max/spread/coverage.
  */
 export function summarizeCandidates(
   players: PoolPlayer[],
@@ -49,6 +60,7 @@ export function summarizeCandidates(
   excludeIds: ReadonlySet<string>,
 ): CandidateSummary[] {
   const summaries: CandidateSummary[] = []
+  const consensusRefs = sourceRefs.filter((ref) => ref !== ADP_REF)
 
   for (const player of players) {
     if (excludeIds.has(player.platform_player_id)) continue
@@ -56,8 +68,10 @@ export function summarizeCandidates(
     const values: number[] = []
     const ranks: Record<string, number | null> = {}
     for (const ref of sourceRefs) {
-      const rank = player.ranks[ref] ?? null
-      ranks[ref] = rank
+      ranks[ref] = player.ranks[ref] ?? null
+    }
+    for (const ref of consensusRefs) {
+      const rank = ranks[ref]
       if (rank !== null) values.push(rank)
     }
 
@@ -78,7 +92,7 @@ export function summarizeCandidates(
       spread:
         values.length > 0 ? Math.max(...values) - Math.min(...values) : null,
       coverage: values.length,
-      sourceCount: sourceRefs.length,
+      sourceCount: consensusRefs.length,
       ranks,
     })
   }

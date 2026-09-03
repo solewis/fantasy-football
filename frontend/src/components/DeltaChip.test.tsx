@@ -9,7 +9,7 @@ import { DeltaChip } from './DeltaChip'
  * and the assertion would pass vacuously. data-bucket is the assertion
  * surface, which is exactly why it's an attribute. */
 describe('DeltaChip', () => {
-  it('prints the signed number, so colour is never the only channel', () => {
+  it('prints the source rank and the signed delta, so colour is never the only channel', () => {
     render(
       <DeltaChip
         sourceRank={4}
@@ -20,7 +20,21 @@ describe('DeltaChip', () => {
       />,
     )
 
-    expect(screen.getByText('+3')).toBeInTheDocument()
+    expect(screen.getByText('4 (+3)')).toBeInTheDocument()
+  })
+
+  it('shows the rank even on agreement, as "(0)" rather than dropping it', () => {
+    render(
+      <DeltaChip
+        sourceRank={1}
+        slot={1}
+        sourceLabel="ADP"
+        slotLabel="WR1"
+        bounds={PICK_BOUNDS}
+      />,
+    )
+
+    expect(screen.getByText('1 (0)')).toBeInTheDocument()
   })
 
   it('marks agreement neutral and disagreement on an arm', () => {

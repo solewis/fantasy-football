@@ -498,6 +498,109 @@ describe('RankingsPage', () => {
     expect(within(rows[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
   })
 
+  it('Load from ADP on a positional set only requests that position', async () => {
+    // Regression: this used to fetch every position regardless of which set
+    // was open, so clicking "Load from ADP" on a QB-scoped set replaced its
+    // saved quarterbacks with hundreds of players across every position --
+    // indistinguishable, from the outside, from the whole list being deleted.
+    const fetchMock = mockBackend({
+      initialSets: [
+        {
+          id: 9,
+          name: 'My QBs',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          scope: 'QB',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 9: savedRanks },
+      players: adpPlayers,
+    })
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load from ADP' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Starting from ADP order/)).toBeInTheDocument()
+    })
+    const playersCall = fetchMock.mock.calls.find(
+      ([url]) => new URL(url as string).pathname === '/players',
+    )
+    expect(playersCall).toBeDefined()
+    const [url] = playersCall as [string]
+    expect(new URL(url).searchParams.get('position')).toBe('QB')
+  })
+
+  it('Load from ADP on the overall set requests every position', async () => {
+    const fetchMock = mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          scope: 'overall',
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+      players: adpPlayers,
+    })
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load from ADP' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Starting from ADP order/)).toBeInTheDocument()
+    })
+    const playersCall = fetchMock.mock.calls.find(
+      ([url]) => new URL(url as string).pathname === '/players',
+    )
+    expect(playersCall).toBeDefined()
+    const [url] = playersCall as [string]
+    expect(new URL(url).searchParams.get('position')).toBeNull()
+  })
+
+  it('an empty positional set falls back to ADP filtered by that position, not every position', async () => {
+    // Same bug, the other trigger: a freshly created (still-empty) positional
+    // set auto-falls back to an ADP preview, and that fallback needs the same
+    // filter -- otherwise opening a brand-new "My QBs" for the first time
+    // would preview it full of running backs and wide receivers.
+    const fetchMock = mockBackend({
+      initialSets: [
+        {
+          id: 9,
+          name: 'My QBs',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          scope: 'QB',
+          player_count: 0,
+        },
+      ],
+      ranksBySetId: { 9: [] },
+      players: adpPlayers,
+    })
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
+
+    await waitFor(() => {
+      const playersCall = fetchMock.mock.calls.find(
+        ([url]) => new URL(url as string).pathname === '/players',
+      )
+      expect(playersCall).toBeDefined()
+    })
+    const playersCall = fetchMock.mock.calls.find(
+      ([url]) => new URL(url as string).pathname === '/players',
+    )
+    const [url] = playersCall as [string]
+    expect(new URL(url).searchParams.get('position')).toBe('QB')
+  })
+
   it('Save Ranks sends the current order to the selected rank set', async () => {
     const fetchMock = mockBackend({
       initialSets: [

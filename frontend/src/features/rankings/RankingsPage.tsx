@@ -68,6 +68,16 @@ export function RankingsPage({ platform, format }: RankingsPageProps) {
   const lastHoverKeyRef = useRef<string | null>(null)
 
   const selectedSet = rankSets.find((s) => s.id === selectedSetId) ?? null
+  // undefined (no filter) for an overall set; the scope itself for a
+  // positional one. Without this, ADP order/fallback pulled every position
+  // regardless of which set was open -- "Load from ADP" (or even just an
+  // empty positional set falling back automatically) on "My QBs" replaced
+  // its 29 quarterbacks with hundreds of players across every position, which
+  // is indistinguishable from the whole list having been deleted.
+  const selectedSetPosition =
+    selectedSet && selectedSet.scope !== 'overall'
+      ? selectedSet.scope
+      : undefined
 
   // Effect A: the list of rank sets for this format. Never touches
   // workingList -- that's Effect B's job, keyed on selectedSetId, so the two
@@ -127,7 +137,12 @@ export function RankingsPage({ platform, format }: RankingsPageProps) {
         setSource('saved')
         return
       }
-      const adpRows = await fetchPlayers({ platform, season: SEASON, format })
+      const adpRows = await fetchPlayers({
+        platform,
+        season: SEASON,
+        format,
+        position: selectedSetPosition,
+      })
       if (cancelled) return
       setWorkingList(adpRows)
       setSource('adp')
@@ -151,14 +166,19 @@ export function RankingsPage({ platform, format }: RankingsPageProps) {
     // formats that both have zero rank sets (selectedSetId staying null both
     // times) still refetches the ADP preview for the new scope, instead of
     // leaving the old one on screen.
-  }, [selectedSetId, platform, format, rankSetsLoaded])
+  }, [selectedSetId, platform, format, rankSetsLoaded, selectedSetPosition])
 
   async function handleLoadFromAdp() {
     setAdpLoading(true)
     setError(null)
     setSaveMessage(null)
     try {
-      const rows = await fetchPlayers({ platform, season: SEASON, format })
+      const rows = await fetchPlayers({
+        platform,
+        season: SEASON,
+        format,
+        position: selectedSetPosition,
+      })
       setWorkingList(rows)
       setSource('adp')
     } catch (err) {

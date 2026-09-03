@@ -15,6 +15,7 @@ const SOURCES = [
     supports_overall: true,
     supports_positional: true,
     scope: null,
+    is_active: null,
   },
   {
     ref: 'dataset:1',
@@ -23,6 +24,7 @@ const SOURCES = [
     supports_overall: true,
     supports_positional: true,
     scope: null,
+    is_active: null,
   },
   {
     ref: 'dataset:2',
@@ -31,6 +33,7 @@ const SOURCES = [
     supports_overall: false,
     supports_positional: true,
     scope: null,
+    is_active: null,
   },
 ]
 
@@ -73,18 +76,47 @@ const DEEP_PLAYERS = Array.from({ length: 30 }, (_, i) => ({
 function mockBackend(
   players = PLAYERS,
   options: {
-    rankSets?: { id: number; name: string; scope: string }[]
+    rankSets?: {
+      id: number
+      name: string
+      scope: string
+      platform?: string
+      is_active?: boolean
+    }[]
+    sources?: typeof SOURCES
     ranksBySetId?: Record<number, unknown[]>
     /** Lets a test simulate the backend rejecting a create, e.g. a duplicate
      * name -- returns this instead of a 200 for POST /rank-sets. */
     createRankSetError?: string
   } = {},
 ) {
-  const { rankSets = [], ranksBySetId = {}, createRankSetError } = options
+  const {
+    rankSets = [],
+    sources = SOURCES,
+    ranksBySetId = {},
+    createRankSetError,
+  } = options
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
     const { pathname } = new URL(url)
     if (pathname === '/rank-sources')
-      return Promise.resolve(jsonResponse(SOURCES))
+      return Promise.resolve(jsonResponse(sources))
+    const activateMatch = /^\/rank-sets\/(\d+)\/activate$/.exec(pathname)
+    if (activateMatch && init?.method === 'POST') {
+      const id = Number(activateMatch[1])
+      const target = rankSets.find((s) => s.id === id)
+      return Promise.resolve(
+        jsonResponse({
+          id,
+          name: target?.name ?? '',
+          scope: target?.scope ?? '',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          is_active: true,
+          player_count: 0,
+        }),
+      )
+    }
     const setRanksMatch = /^\/rank-sets\/(\d+)\/ranks$/.exec(pathname)
     if (setRanksMatch) {
       const id = Number(setRanksMatch[1])
@@ -785,5 +817,201 @@ describe('naming a new rank set', () => {
     // The field survives the failure -- this is exactly where it needed to be
     // reachable, so the name can be corrected and Save tried again.
     expect(screen.getByLabelText('New rank set name')).toBeInTheDocument()
+  })
+})
+
+describe('multiple positional rank sets per position', () => {
+  const MY_QBS_RANKS = [
+    {
+      rank: 1,
+      platform_player_id: 'q1',
+      name: 'Josh Allen',
+      position: 'QB',
+      team: 'BUF',
+      adp: 20,
+      tier: null,
+      break_after: null,
+      flag: null,
+    },
+  ]
+  const QB_BACKUP_RANKS = [
+    {
+      rank: 1,
+      platform_player_id: 'q2',
+      name: 'Lamar Jackson',
+      position: 'QB',
+      team: 'BAL',
+      adp: 25,
+      tier: null,
+      break_after: null,
+      flag: null,
+    },
+  ]
+  const POSITIONAL_SOURCES = [
+    ...SOURCES,
+    {
+      ref: 'rank_set:9',
+      label: 'My QBs',
+      kind: 'rank_set',
+      supports_overall: false,
+      supports_positional: true,
+      scope: 'QB',
+      is_active: true,
+    },
+    {
+      ref: 'rank_set:10',
+      label: 'QB backup',
+      kind: 'rank_set',
+      supports_overall: false,
+      supports_positional: true,
+      scope: 'QB',
+      is_active: false,
+    },
+  ]
+  const RANK_SETS = [
+    {
+      id: 9,
+      name: 'My QBs',
+      scope: 'QB',
+      platform: 'sleeper',
+      is_active: true,
+    },
+    {
+      id: 10,
+      name: 'QB backup',
+      scope: 'QB',
+      platform: 'sleeper',
+      is_active: false,
+    },
+  ]
+
+  it('only shows the active positional set as a source, grouped separately', async () => {
+    mockBackend(PLAYERS, {
+      sources: POSITIONAL_SOURCES,
+      rankSets: RANK_SETS,
+      ranksBySetId: { 9: MY_QBS_RANKS, 10: QB_BACKUP_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+
+    expect(
+      screen.getByText('Your positional lists', {
+        selector: '.build-panel-head',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /My QBs/ })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /QB backup/ })).toBeNull()
+  })
+
+  it('hides the positional-lists section while building a specific position', async () => {
+    // Comparing e.g. an RB list's ranks against QB candidates is meaningless
+    // -- the players don't even overlap -- so no positional rank_set source
+    // should appear at all here, active or not.
+    mockBackend(PLAYERS, {
+      sources: POSITIONAL_SOURCES,
+      rankSets: RANK_SETS,
+      ranksBySetId: { 9: MY_QBS_RANKS, 10: QB_BACKUP_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByText('Your positional lists', {
+        selector: '.build-panel-head',
+      }),
+    ).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /My QBs/ })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /QB backup/ })).toBeNull()
+  })
+
+  it('shows which set is active in the rank-set dropdown, and lets you switch', async () => {
+    const fetchMock = mockBackend(PLAYERS, {
+      sources: POSITIONAL_SOURCES,
+      rankSets: RANK_SETS,
+      ranksBySetId: { 9: MY_QBS_RANKS, 10: QB_BACKUP_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+
+    const select = screen.getByRole('combobox', {
+      name: 'Rank set',
+    }) as HTMLSelectElement
+    expect(select.options[1].textContent).toContain('(active)')
+    // The currently-loaded set ("My QBs") is already active -- no button.
+    expect(screen.queryByRole('button', { name: 'Set active' })).toBeNull()
+
+    fireEvent.change(select, { target: { value: '10' } })
+    await waitFor(() => {
+      expect(screen.getByText('Lamar Jackson')).toBeInTheDocument()
+    })
+
+    const activateButton = screen.getByRole('button', { name: 'Set active' })
+    fireEvent.click(activateButton)
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            (url as string).endsWith('/rank-sets/10/activate') &&
+            (init as RequestInit)?.method === 'POST',
+        ),
+      ).toBe(true)
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Set active' })).toBeNull()
+    })
+  })
+
+  it('the "from your positional lists" panel uses only the active set', async () => {
+    // Regression guard: this panel used to key its data by scope alone, so
+    // with two QB lists the later one loaded silently won the slot -- there
+    // was no way to tell which list was actually feeding it.
+    mockBackend(PLAYERS, {
+      sources: POSITIONAL_SOURCES,
+      rankSets: RANK_SETS,
+      ranksBySetId: { 9: MY_QBS_RANKS, 10: QB_BACKUP_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+
+    await waitFor(() => {
+      expect(screen.getByText('From your positional lists')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Josh Allen')).toBeInTheDocument()
+    expect(screen.queryByText('Lamar Jackson')).toBeNull()
+  })
+
+  it('shows a note that a fresh second set will not be used automatically', async () => {
+    mockBackend(PLAYERS, {
+      sources: POSITIONAL_SOURCES,
+      rankSets: RANK_SETS,
+      ranksBySetId: { 9: MY_QBS_RANKS, 10: QB_BACKUP_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    fireEvent.click(screen.getByRole('tab', { name: 'QB' }))
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Rank set' }), {
+      target: { value: 'new' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('My list (0)')).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText(/won't be used by the overall build or draft room/i),
+    ).toBeInTheDocument()
   })
 })

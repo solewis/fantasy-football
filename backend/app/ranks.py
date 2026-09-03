@@ -74,6 +74,7 @@ def list_rank_sets(
             "season": rank_set.season,
             "format": rank_set.format,
             "scope": rank_set.scope,
+            "is_active": rank_set.is_active,
             "player_count": count,
         }
         for rank_set, count in query.all()
@@ -107,12 +108,23 @@ def create_rank_set(
     if existing:
         raise RankSetError(f"A rank set named {name!r} already exists for this format")
 
+    # A position's first-ever list is unambiguous, so it becomes active with no
+    # extra step. Once a position already has one, a new list is created
+    # inactive -- it's a fresh working copy, not an automatic replacement of
+    # whatever's currently feeding the overall build and the draft room.
+    is_active = scope != OVERALL and not (
+        session.query(RankSet)
+        .filter_by(platform=platform, season=season, format=format, scope=scope)
+        .first()
+    )
+
     rank_set = RankSet(
         name=name,
         platform=platform,
         season=season,
         format=format,
         scope=scope,
+        is_active=is_active,
         created_at=datetime.now(UTC),
     )
     session.add(rank_set)
@@ -162,16 +174,62 @@ def rename_rank_set(session: Session, rank_set_id: int, name: str) -> RankSet:
     return rank_set
 
 
+def set_active_rank_set(session: Session, rank_set_id: int) -> RankSet:
+    """Mark a positional rank set as the one the overall builder and the draft
+    room use for its position, deactivating whichever set previously held
+    that spot. Only meaningful for a positional scope -- an overall set has no
+    sibling to disambiguate from.
+    """
+    rank_set = get_rank_set(session, rank_set_id)
+    if rank_set is None:
+        raise RankSetError("Rank set not found")
+    if rank_set.scope == OVERALL:
+        raise RankSetError("Only a positional rank set can be marked active")
+
+    session.query(RankSet).filter_by(
+        platform=rank_set.platform,
+        season=rank_set.season,
+        format=rank_set.format,
+        scope=rank_set.scope,
+    ).update({"is_active": False})
+    rank_set.is_active = True
+    session.commit()
+    session.refresh(rank_set)
+    return rank_set
+
+
 def delete_rank_set(session: Session, rank_set_id: int) -> None:
     rank_set = get_rank_set(session, rank_set_id)
     if rank_set is None:
         raise RankSetError("Rank set not found")
+
+    # Deleting the active set for a position would otherwise leave that
+    # position with zero active sets even though others still exist --
+    # promote the lowest remaining id (same "first created wins" rule used
+    # elsewhere) so the overall builder and draft room always have exactly one
+    # to fall back on.
+    promoted = None
+    if rank_set.is_active and rank_set.scope != OVERALL:
+        promoted = (
+            session.query(RankSet)
+            .filter_by(
+                platform=rank_set.platform,
+                season=rank_set.season,
+                format=rank_set.format,
+                scope=rank_set.scope,
+            )
+            .filter(RankSet.id != rank_set_id)
+            .order_by(RankSet.id.asc())
+            .first()
+        )
 
     # No PRAGMA foreign_keys=ON in this app -- entries (and any League still
     # pointing at this set) have to be cleared explicitly, not left dangling.
     session.query(RankEntry).filter_by(rank_set_id=rank_set_id).delete()
     session.query(League).filter_by(rank_set_id=rank_set_id).update({"rank_set_id": None})
     session.delete(rank_set)
+    if promoted is not None:
+        promoted.is_active = True
     session.commit()
 
 

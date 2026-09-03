@@ -18,6 +18,7 @@ from app.ranks import (
     rename_rank_set,
     replace_ranks,
     resolve_rank_set,
+    set_active_rank_set,
 )
 
 router = APIRouter()
@@ -35,6 +36,7 @@ class RankSetSummary(BaseModel):
     season: str
     format: str
     scope: str
+    is_active: bool
     player_count: int
 
 
@@ -159,6 +161,21 @@ def delete_rank_set_route(rank_set_id: int, db: DbSession) -> Response:
     except RankSetError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Response(status_code=204)
+
+
+@router.post("/rank-sets/{rank_set_id}/activate", response_model=RankSetSummary)
+def post_activate_rank_set(rank_set_id: int, db: DbSession) -> RankSetSummary:
+    """Mark a positional rank set as the one used for its position by the
+    overall builder and the draft room, deactivating whichever set held that
+    spot before.
+    """
+    try:
+        rank_set = set_active_rank_set(db, rank_set_id)
+    except RankSetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    rows = list_rank_sets(db, rank_set.platform, rank_set.season, rank_set.format)
+    summary = next(row for row in rows if row["id"] == rank_set.id)
+    return RankSetSummary(**summary)
 
 
 @router.get("/rank-sets/{rank_set_id}/ranks", response_model=list[RankRow])

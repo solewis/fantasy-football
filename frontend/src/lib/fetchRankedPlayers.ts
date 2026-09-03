@@ -71,8 +71,11 @@ export async function fetchDraftPools(
 
   const positionalSets = BUILD_POSITIONS.map((position) => ({
     position,
-    // Lowest id wins, matching the backend resolver's rule for overall sets.
-    set: rankSets.find((s) => s.scope === position) ?? null,
+    // The one set marked active for this position -- with multiple named
+    // lists now possible per position, "first found" would silently pin the
+    // draft room to whichever list happened to be created first, even after
+    // a different one is later marked active in the builder.
+    set: rankSets.find((s) => s.scope === position && s.is_active) ?? null,
   })).filter((entry) => entry.set !== null)
 
   const positionalRanks = await Promise.all(

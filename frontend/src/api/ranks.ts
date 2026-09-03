@@ -32,6 +32,11 @@ export interface RankSetSummary {
   season: string
   format: string
   scope: RankSetScope
+  /** Meaningful only for a positional scope: with multiple named lists now
+   * allowed per position, this is the one the overall builder and the draft
+   * room actually use. Always false for an overall set -- there's nothing to
+   * disambiguate. */
+  is_active: boolean
   player_count: number
 }
 
@@ -115,6 +120,19 @@ export async function renameRankSet(
     body: JSON.stringify({ name }),
   })
   return parseOrThrow(response, 'Renaming rank set')
+}
+
+/** Marks a positional rank set as the one used for its position by the
+ * overall builder and the draft room, deactivating whichever set held that
+ * spot before. Rejected for an overall set -- there's no sibling to
+ * disambiguate from. */
+export async function activateRankSet(
+  rankSetId: number,
+): Promise<RankSetSummary> {
+  const response = await fetch(`${API_BASE}/rank-sets/${rankSetId}/activate`, {
+    method: 'POST',
+  })
+  return parseOrThrow(response, 'Setting active rank set')
 }
 
 export async function deleteRankSet(rankSetId: number): Promise<void> {

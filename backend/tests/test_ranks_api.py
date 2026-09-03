@@ -126,6 +126,69 @@ def test_delete_rank_set_removes_it(api_client):
     assert remaining == []
 
 
+def test_post_rank_set_first_positional_set_is_active(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+
+    rank_set = create_rank_set(client, name="My QBs", scope="QB")
+
+    assert rank_set["is_active"] is True
+
+
+def test_post_activate_rank_set_switches_active_flag(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    first = create_rank_set(client, name="My QBs", scope="QB")
+    second = create_rank_set(client, name="QB backup", scope="QB")
+    assert second["is_active"] is False
+
+    response = client.post(f"/rank-sets/{second['id']}/activate")
+
+    assert response.status_code == 200
+    assert response.json()["is_active"] is True
+    rows = client.get(
+        "/rank-sets", params={"season": "2026", "format": "half_ppr", "scope": "QB"}
+    ).json()
+    by_id = {row["id"]: row["is_active"] for row in rows}
+    assert by_id[first["id"]] is False
+    assert by_id[second["id"]] is True
+
+
+def test_post_activate_rank_set_rejects_overall_scope(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    rank_set = create_rank_set(client, name="Main")
+
+    response = client.post(f"/rank-sets/{rank_set['id']}/activate")
+
+    assert response.status_code == 400
+
+
+def test_post_activate_rank_set_rejects_unknown_id(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+
+    response = client.post("/rank-sets/999/activate")
+
+    assert response.status_code == 400
+
+
+def test_delete_rank_set_promotes_another_active_set(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    first = create_rank_set(client, name="My QBs", scope="QB")
+    second = create_rank_set(client, name="QB backup", scope="QB")
+
+    client.delete(f"/rank-sets/{first['id']}")
+
+    rows = client.get(
+        "/rank-sets", params={"season": "2026", "format": "half_ppr", "scope": "QB"}
+    ).json()
+    assert len(rows) == 1
+    assert rows[0]["id"] == second["id"]
+    assert rows[0]["is_active"] is True
+
+
 def test_put_and_get_ranks_for_a_set(api_client):
     client, session_factory = api_client
     seed(session_factory)

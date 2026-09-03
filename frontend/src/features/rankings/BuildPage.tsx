@@ -3,10 +3,12 @@ import { useEffect, useMemo, useReducer, useState } from 'react'
 import {
   fetchAvailableSources,
   fetchRankPool,
+  isSourceEligibleForScope,
   type AvailableSource,
   type RankPool,
 } from '../../api/rankPool'
 import {
+  activateRankSet,
   createRankSet,
   fetchRanksForSet,
   fetchRankSets,
@@ -87,6 +89,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [activating, setActivating] = useState(false)
 
   // A personal priority order over sources -- independent of which are
   // checked, and remembered across visits so it doesn't need resetting every
@@ -167,9 +170,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
   const eligibleRefs = useMemo(() => {
     const usable = new Set(
       available
-        .filter((s) =>
-          scope === 'overall' ? s.supports_overall : s.supports_positional,
-        )
+        .filter((s) => isSourceEligibleForScope(s, scope))
         .map((s) => s.ref),
     )
     return selectedRefs.filter((ref) => usable.has(ref))
@@ -256,20 +257,28 @@ export function BuildPage({ platform, format }: BuildPageProps) {
   }, [activePool, knownPlayers])
 
   // Only overall builds have a "yours" panel; positional sets ARE the thing
-  // being built when scope is a position.
+  // being built when scope is a position. Only the active set per position --
+  // showing every list here is exactly the "which one is it using" ambiguity
+  // the active flag exists to remove.
   const positionalSets = useMemo(
-    () => rankSets.filter((s) => s.scope !== 'overall'),
+    () => rankSets.filter((s) => s.scope !== 'overall' && s.is_active),
     [rankSets],
   )
 
-  // An explicit choice wins; otherwise fall back to the first set for this
-  // scope. Derived so switching scope can't leave a stale selection behind.
+  // An explicit choice wins; otherwise fall back to the active set for this
+  // scope (or the first one, for an overall scope where "active" doesn't
+  // apply). Derived so switching scope can't leave a stale selection behind.
   const targetSets = useMemo(
     () => rankSets.filter((s) => s.scope === scope),
     [rankSets, scope],
   )
 
-  const effectiveTarget = targetChoice ?? targetSets[0]?.id ?? 'new'
+  const defaultTargetSet = targetSets.find((s) => s.is_active) ?? targetSets[0]
+  const effectiveTarget = targetChoice ?? defaultTargetSet?.id ?? 'new'
+  const effectiveTargetSet =
+    typeof effectiveTarget === 'number'
+      ? targetSets.find((s) => s.id === effectiveTarget)
+      : undefined
 
   // Loads an existing target set's saved order into the working list, so
   // "My QBs" showing in this dropdown actually means something -- it used to
@@ -396,6 +405,35 @@ export function BuildPage({ platform, format }: BuildPageProps) {
     }
   }
 
+  // Only meaningful for a positional target set that isn't already the one
+  // the overall builder and draft room use for that position.
+  async function handleActivate() {
+    if (typeof effectiveTarget !== 'number') return
+    setActivating(true)
+    setError(null)
+    try {
+      const updated = await activateRankSet(effectiveTarget)
+      setRankSets((sets) =>
+        sets.map((s) =>
+          s.scope === updated.scope && s.platform === updated.platform
+            ? { ...s, is_active: s.id === updated.id }
+            : s,
+        ),
+      )
+      setAvailable((sources) =>
+        sources.map((s) =>
+          s.kind === 'rank_set' && s.scope === updated.scope
+            ? { ...s, is_active: s.ref === `rank_set:${updated.id}` }
+            : s,
+        ),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to set active')
+    } finally {
+      setActivating(false)
+    }
+  }
+
   return (
     <div className="build-page">
       <div className="build-toolbar">
@@ -445,6 +483,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
           {targetSets.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
+              {scope !== 'overall' && s.is_active ? ' (active)' : ''}
             </option>
           ))}
         </select>
@@ -458,6 +497,27 @@ export function BuildPage({ platform, format }: BuildPageProps) {
             placeholder="Name this rank set"
           />
         )}
+
+        {effectiveTarget === 'new' &&
+          scope !== 'overall' &&
+          targetSets.some((s) => s.is_active) && (
+            <span className="build-source-note">
+              Won't be used by the overall build or draft room until set active
+            </span>
+          )}
+
+        {scope !== 'overall' &&
+          effectiveTargetSet &&
+          !effectiveTargetSet.is_active && (
+            <button
+              type="button"
+              onClick={handleActivate}
+              disabled={activating}
+              title="Use this list for the overall build and draft room"
+            >
+              {activating ? 'Setting active…' : 'Set active'}
+            </button>
+          )}
 
         <button
           type="button"

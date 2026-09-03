@@ -221,3 +221,19 @@ def test_list_available_sources_marks_what_each_can_serve():
     assert by_label["WR only"]["supports_overall"] is False
     assert by_label["WR only"]["supports_positional"] is True
     assert by_label["My WRs"]["supports_overall"] is False
+
+
+def test_list_available_sources_reports_is_active_for_positional_sets_only():
+    session = make_session()
+    seed(session)
+    create_rank_set(session, "Main", "2026", "half_ppr", seed_from_adp=False)
+    create_rank_set(session, "My WRs", "2026", "half_ppr", scope="WR", seed_from_adp=False)
+
+    sources = rank_sources.list_available_sources(session, "sleeper", "2026", "half_ppr")
+
+    by_label = {s["label"]: s for s in sources}
+    assert by_label["ADP"]["is_active"] is None
+    # Overall sets have no ambiguity to disambiguate -- is_active doesn't apply.
+    assert by_label["Main"]["is_active"] is None
+    # The only WR set that exists becomes active automatically on creation.
+    assert by_label["My WRs"]["is_active"] is True

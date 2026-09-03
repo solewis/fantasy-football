@@ -227,6 +227,7 @@ def list_available_sources(session: Session, platform: str, season: str, format:
             "supports_overall": True,
             "supports_positional": True,
             "scope": None,
+            "is_active": None,
         }
     ]
 
@@ -244,6 +245,7 @@ def list_available_sources(session: Session, platform: str, season: str, format:
                 "supports_overall": dataset.has_overall,
                 "supports_positional": dataset.has_positional,
                 "scope": None,
+                "is_active": None,
             }
         )
 
@@ -262,6 +264,9 @@ def list_available_sources(session: Session, platform: str, season: str, format:
                 "supports_overall": is_overall,
                 "supports_positional": not is_overall,
                 "scope": rank_set.scope,
+                # None (not False) for an overall set -- "active" isn't a
+                # concept that applies to it, there's nothing to disambiguate.
+                "is_active": None if is_overall else rank_set.is_active,
             }
         )
 

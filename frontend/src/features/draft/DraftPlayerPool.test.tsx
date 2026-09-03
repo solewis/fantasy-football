@@ -84,7 +84,7 @@ function mockFetch({
   rankSetRanks?: RankRow[]
   /** What GET /rank-sets returns -- the pool reads this to find your
    * per-position lists. */
-  rankSets?: { id: number; scope: string }[]
+  rankSets?: { id: number; scope: string; is_active?: boolean }[]
   ranksBySetId?: Record<number, RankRow[]>
 } = {}) {
   const fetchMock = vi.fn((url: string) => {
@@ -479,7 +479,7 @@ describe('per-position lists', () => {
   it('uses your list for that position, not the overall list filtered', async () => {
     mockFetch({
       ranks: overall,
-      rankSets: [{ id: 7, scope: 'WR' }],
+      rankSets: [{ id: 7, scope: 'WR', is_active: true }],
       ranksBySetId: { 7: wrList },
     })
     renderPool()
@@ -508,7 +508,7 @@ describe('per-position lists', () => {
   it('shows the marks from that positional list', async () => {
     mockFetch({
       ranks: overall,
-      rankSets: [{ id: 7, scope: 'WR' }],
+      rankSets: [{ id: 7, scope: 'WR', is_active: true }],
       ranksBySetId: { 7: wrList },
     })
     renderPool()
@@ -531,7 +531,7 @@ describe('per-position lists', () => {
     // simply haven't built yet.
     mockFetch({
       ranks: overall,
-      rankSets: [{ id: 7, scope: 'WR' }],
+      rankSets: [{ id: 7, scope: 'WR', is_active: true }],
       ranksBySetId: { 7: wrList },
     })
     renderPool()

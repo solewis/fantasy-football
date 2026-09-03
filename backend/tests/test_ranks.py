@@ -425,3 +425,99 @@ def test_replace_ranks_rejects_an_unknown_flag():
             rank_set.id,
             [ranks.RankEntryInput(platform_player_id="1", flag="maybe")],
         )
+
+
+def test_create_rank_set_first_positional_set_is_active_by_default():
+    session = make_session()
+
+    rank_set = make_set(session, name="My QBs", scope="QB")
+
+    assert rank_set.is_active is True
+
+
+def test_create_rank_set_second_positional_set_starts_inactive():
+    session = make_session()
+    make_set(session, name="My QBs", scope="QB")
+
+    second = make_set(session, name="QB backup", scope="QB")
+
+    assert second.is_active is False
+
+
+def test_create_rank_set_overall_scope_is_never_active():
+    session = make_session()
+
+    rank_set = make_set(session, name="Main")
+
+    assert rank_set.is_active is False
+
+
+def test_create_rank_set_active_by_position_is_independent():
+    session = make_session()
+    make_set(session, name="My QBs", scope="QB")
+
+    # QB already has an active set -- RB doesn't, so its first set still
+    # becomes active. Positions must not share one global "has any active" flag.
+    rb_set = make_set(session, name="My RBs", scope="RB")
+
+    assert rb_set.is_active is True
+
+
+def test_set_active_rank_set_deactivates_the_previous_one():
+    session = make_session()
+    first = make_set(session, name="My QBs", scope="QB")
+    second = make_set(session, name="QB backup", scope="QB")
+    assert first.is_active is True
+    assert second.is_active is False
+
+    activated = ranks.set_active_rank_set(session, second.id)
+
+    assert activated.is_active is True
+    session.refresh(first)
+    assert first.is_active is False
+
+
+def test_set_active_rank_set_rejects_overall_scope():
+    session = make_session()
+    rank_set = make_set(session, name="Main")
+
+    with pytest.raises(ranks.RankSetError):
+        ranks.set_active_rank_set(session, rank_set.id)
+
+
+def test_set_active_rank_set_rejects_unknown_id():
+    session = make_session()
+
+    with pytest.raises(ranks.RankSetError):
+        ranks.set_active_rank_set(session, 999)
+
+
+def test_delete_rank_set_promotes_another_set_when_active_one_is_deleted():
+    session = make_session()
+    first = make_set(session, name="My QBs", scope="QB")
+    second = make_set(session, name="QB backup", scope="QB")
+    assert first.is_active is True
+
+    ranks.delete_rank_set(session, first.id)
+
+    session.refresh(second)
+    assert second.is_active is True
+
+
+def test_delete_rank_set_leaves_no_active_set_when_it_was_the_only_one():
+    session = make_session()
+    rank_set = make_set(session, name="My QBs", scope="QB")
+
+    # Should not raise even though nothing is left to promote.
+    ranks.delete_rank_set(session, rank_set.id)
+
+    assert ranks.list_rank_sets(session, "sleeper", "2026", "half_ppr", scope="QB") == []
+
+
+def test_list_rank_sets_includes_is_active():
+    session = make_session()
+    make_set(session, name="My QBs", scope="QB")
+
+    rows = ranks.list_rank_sets(session, "sleeper", "2026", "half_ppr", scope="QB")
+
+    assert rows[0]["is_active"] is True

@@ -129,6 +129,14 @@ class RankSet(Base):
     scope: Mapped[str] = mapped_column(
         String, index=True, server_default="overall", default="overall"
     )
+    # Meaningful only for a positional scope: with multiple named lists per
+    # position now possible, exactly one is the one the overall builder and the
+    # draft room actually use. Enforced in app/ranks.py's set_active_rank_set,
+    # not a DB constraint -- SQLite has no partial unique index, and "exactly
+    # one true per (platform, season, format, scope)" is cheap to keep as an
+    # invariant in the one place that ever flips this flag. Ignored for
+    # scope="overall", where there's no ambiguity to resolve.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 

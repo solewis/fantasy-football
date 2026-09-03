@@ -17,6 +17,45 @@ export interface AvailableSource {
   supports_positional: boolean
   /** The rank set's own scope, for rank_set sources; null otherwise. */
   scope: string | null
+  /** Whether this is the one positional set used for its position by the
+   * overall builder and the draft room. null for adp/dataset sources and for
+   * an overall-scoped rank set -- neither has an "active" concept. */
+  is_active: boolean | null
+}
+
+/** A source that is one of your own positional lists (QB/RB/WR/TE), as
+ * opposed to ADP, an imported dataset, or one of your own overall lists. */
+export function isPositionalRankSetSource(source: AvailableSource): boolean {
+  return (
+    source.kind === 'rank_set' &&
+    source.scope !== null &&
+    source.scope !== 'overall'
+  )
+}
+
+/** Whether a source can feed the build currently in progress.
+ *
+ * Shared by the source picker (what's shown checked/disabled) and the pool
+ * fetch (what's actually sent to the backend) so the two can never disagree
+ * about what "usable" means -- that mismatch is exactly the class of bug this
+ * function exists to prevent.
+ *
+ * Your own positional lists are a special case: they only feed an *overall*
+ * build, and only the one list marked active for that position. Comparing an
+ * RB list's ranks against QB candidates is meaningless (the players don't
+ * even overlap), and showing every list for a position here is the exact
+ * ambiguity the active flag exists to remove.
+ */
+export function isSourceEligibleForScope(
+  source: AvailableSource,
+  scope: string,
+): boolean {
+  if (isPositionalRankSetSource(source)) {
+    return scope === 'overall' && source.is_active === true
+  }
+  return scope === 'overall'
+    ? source.supports_overall
+    : source.supports_positional
 }
 
 export interface PoolSource {

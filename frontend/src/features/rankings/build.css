@@ -92,6 +92,13 @@
   padding: 8px;
 }
 
+/* A second head inside the same panel, marking off "your positional lists"
+   from the main source list above it -- a top border reads as a section
+   break without needing a whole second bordered panel. */
+.build-panel-subhead {
+  border-top: 1px solid var(--border, #33322f);
+}
+
 .build-source-row {
   display: flex;
   align-items: center;

@@ -670,7 +670,7 @@
    are gone) is always visible at a glance -- the whole point of asking to
    see drafted players rather than have them vanish from view. */
 .draft-pool-table tr.drafted {
-  opacity: 0.4;
+  opacity: 0.25;
 }
 
 .draft-pool-table tr.drafted:hover {

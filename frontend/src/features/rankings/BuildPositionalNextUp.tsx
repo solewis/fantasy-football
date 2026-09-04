@@ -22,7 +22,15 @@ interface NextUpEntry {
   tier: number | null
 }
 
-const PER_POSITION = 3
+// 3 was too few to be useful once queueing several picks ahead at a
+// position; 6 gives real runway without turning the panel into a second
+// full candidate table.
+const PER_POSITION = 6
+
+interface PositionSource {
+  setName: string
+  entries: NextUpEntry[]
+}
 
 /** The next few players from your *own* positional lists, when building overall.
  *
@@ -38,7 +46,7 @@ export function BuildPositionalNextUp({
   placed,
   onPick,
 }: BuildPositionalNextUpProps) {
-  const [byPosition, setByPosition] = useState<Record<string, NextUpEntry[]>>(
+  const [byPosition, setByPosition] = useState<Record<string, PositionSource>>(
     {},
   )
 
@@ -48,17 +56,20 @@ export function BuildPositionalNextUp({
     let cancelled = false
 
     async function load() {
-      const result: Record<string, NextUpEntry[]> = {}
+      const result: Record<string, PositionSource> = {}
       for (const set of sets) {
         const rows = await fetchRanksForSet(set.id)
-        result[set.scope] = rows.map((row) => ({
-          platform_player_id: row.platform_player_id,
-          name: row.name,
-          position: row.position,
-          team: row.team,
-          positional_rank: row.rank,
-          tier: row.tier,
-        }))
+        result[set.scope] = {
+          setName: set.name,
+          entries: rows.map((row) => ({
+            platform_player_id: row.platform_player_id,
+            name: row.name,
+            position: row.position,
+            team: row.team,
+            positional_rank: row.rank,
+            tier: row.tier,
+          })),
+        }
       }
       if (!cancelled) setByPosition(result)
     }
@@ -71,7 +82,7 @@ export function BuildPositionalNextUp({
     // doesn't refetch; `sets` is listed to satisfy the dependency check.
   }, [setsKey, sets, platform, format])
 
-  const positions = BUILD_POSITIONS.filter((p) => byPosition[p]?.length)
+  const positions = BUILD_POSITIONS.filter((p) => byPosition[p]?.entries.length)
   if (positions.length === 0) return null
 
   return (
@@ -79,13 +90,25 @@ export function BuildPositionalNextUp({
       <div className="build-panel-head">From your positional lists</div>
       <div className="build-nextup">
         {positions.map((position) => {
-          const remaining = (byPosition[position] ?? [])
+          const source = byPosition[position]
+          const remaining = (source?.entries ?? [])
             .filter((entry) => !placed.has(entry.platform_player_id))
             .slice(0, PER_POSITION)
           return (
             <div key={position} className="build-nextup-col">
               <div className="build-nextup-head">
                 <PositionTag position={position} />
+                {/* Multiple lists can exist per position now -- only the
+                    active one feeds this panel, but which one that is isn't
+                    obvious without naming it here. */}
+                {source && (
+                  <span
+                    className="build-nextup-set-name"
+                    title={source.setName}
+                  >
+                    {source.setName}
+                  </span>
+                )}
               </div>
               {remaining.length === 0 ? (
                 <p className="build-nextup-empty">—</p>

@@ -391,7 +391,22 @@ li:hover > .build-insert-here,
 }
 
 .build-nextup-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   margin-bottom: 4px;
+}
+
+/* Multiple lists can exist per position now -- this names which one is
+   actually feeding the column, so it's never a guess. Truncates rather than
+   wrapping, since a rank set name can run long ("QB backup (draft night)"). */
+.build-nextup-set-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-muted, #898781);
 }
 
 .build-nextup-row {

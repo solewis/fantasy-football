@@ -46,6 +46,7 @@ export function DraftPlayerPool({
   onQueue,
 }: DraftPlayerPoolProps) {
   const [position, setPosition] = useState<PositionFilter>('ALL')
+  const [sortBy, setSortBy] = useState<'rank' | 'adp'>('rank')
   const [search, setSearch] = useState('')
   const [pools, setPools] = useState<DraftPools | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -103,12 +104,27 @@ export function DraftPlayerPool({
   // seeing the whole tier (who's gone, who's left) is the point of a tier in
   // the first place, and a tier silently shrinking hides exactly the thing
   // you'd want to notice ("I'm down to the last player in this tier").
-  const rows = sourceRows.filter((row) => {
+  const filteredRows = sourceRows.filter((row) => {
     if (!usingPositionalList && position !== 'ALL' && row.position !== position)
       return false
     if (searchTerm && !row.name.toLowerCase().includes(searchTerm)) return false
     return true
   })
+
+  // Sorted by ADP is a different view of the same players, not a different
+  // list -- it's for seeing where the field has them, not for re-ranking.
+  // Tiers and the "past your ranks" boundary are properties of your own rank
+  // order, so both are suppressed here: they'd land on arbitrary rows once
+  // adjacency no longer follows your list.
+  const rows =
+    sortBy === 'adp'
+      ? [...filteredRows].sort((a, b) => {
+          if (a.adp === null && b.adp === null) return 0
+          if (a.adp === null) return 1
+          if (b.adp === null) return -1
+          return a.adp - b.adp
+        })
+      : filteredRows
 
   // Rk, ADP, Name, Team, Actions, plus the two value/reach columns when shown.
   const columnCount = showValue ? 7 : 5
@@ -181,8 +197,26 @@ export function DraftPlayerPool({
           <table className="draft-pool-table">
             <thead>
               <tr>
-                <th>Rk</th>
-                <th>ADP</th>
+                <th>
+                  <button
+                    type="button"
+                    className={`draft-pool-sort-btn${sortBy === 'rank' ? ' active' : ''}`}
+                    onClick={() => setSortBy('rank')}
+                    title="Sort by your rank"
+                  >
+                    Rk
+                  </button>
+                </th>
+                <th>
+                  <button
+                    type="button"
+                    className={`draft-pool-sort-btn${sortBy === 'adp' ? ' active' : ''}`}
+                    onClick={() => setSortBy('adp')}
+                    title="Sort by ADP"
+                  >
+                    ADP
+                  </button>
+                </th>
                 {showValue && (
                   <>
                     <th title="Where this player usually goes, against the pick on the clock">
@@ -205,6 +239,7 @@ export function DraftPlayerPool({
                 // row's break_after -- a list saved before break weights
                 // existed has tiers but no break_after at all.
                 const tierChanges =
+                  sortBy === 'rank' &&
                   prev !== null &&
                   row.tier !== null &&
                   prev.tier !== null &&
@@ -214,7 +249,10 @@ export function DraftPlayerPool({
                   : null
                 const drafted = draftedIds.has(row.platform_player_id)
                 const unrankedStart =
-                  row.unranked && prev !== null && !prev.unranked
+                  sortBy === 'rank' &&
+                  row.unranked &&
+                  prev !== null &&
+                  !prev.unranked
 
                 return (
                   <Fragment key={row.platform_player_id}>

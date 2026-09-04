@@ -752,3 +752,154 @@ describe('value vs reach', () => {
     expect(screen.queryByText('vs ADP')).toBeNull()
   })
 })
+
+describe('sorting by ADP', () => {
+  function rowNames() {
+    return screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => r.textContent ?? '')
+  }
+
+  it('sorts by ADP ascending when the ADP header is clicked', async () => {
+    // savedRanks ranks Bijan (adp 2.0) ahead of Chase (adp 1.0) -- the
+    // opposite of ADP order, so this actually exercises a re-sort.
+    mockFetch({ ranks: savedRanks })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+    expect(rowNames()[0]).toContain('Bijan Robinson')
+
+    fireEvent.click(screen.getByRole('button', { name: 'ADP' }))
+
+    expect(rowNames()[0]).toContain("Ja'Marr Chase")
+  })
+
+  it('returns to rank order when Rk is clicked again', async () => {
+    mockFetch({ ranks: savedRanks })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+    fireEvent.click(screen.getByRole('button', { name: 'ADP' }))
+    expect(rowNames()[0]).toContain("Ja'Marr Chase")
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rk' }))
+
+    expect(rowNames()[0]).toContain('Bijan Robinson')
+  })
+
+  it('sorts a player with no ADP last, not first', async () => {
+    const noAdp: RankRow = {
+      rank: 3,
+      platform_player_id: '9',
+      name: 'No Adp Guy',
+      position: 'WR',
+      team: 'NYJ',
+      adp: null,
+      tier: null,
+      break_after: null,
+      flag: null,
+    }
+    mockFetch({ ranks: [...savedRanks, noAdp] })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(screen.getByRole('button', { name: 'ADP' }))
+
+    const names = rowNames()
+    expect(names[names.length - 1]).toContain('No Adp Guy')
+  })
+
+  it('suppresses tier dividers while sorted by ADP', async () => {
+    // A tier is a property of your own rank order -- once ADP scrambles
+    // adjacency, a divider would land between arbitrary players.
+    const tiered: RankRow[] = [
+      { ...savedRanks[0], tier: 1, break_after: 'major' },
+      { ...savedRanks[1], tier: 2 },
+    ]
+    mockFetch({ ranks: tiered })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+    expect(document.querySelector('.draft-pool-tier-divider')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ADP' }))
+
+    expect(document.querySelector('.draft-pool-tier-divider')).toBeNull()
+  })
+
+  it('marks the active sort column', async () => {
+    mockFetch({ ranks: savedRanks })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+    expect(screen.getByRole('button', { name: 'Rk' }).className).toContain(
+      'active',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'ADP' }))
+
+    expect(screen.getByRole('button', { name: 'ADP' }).className).toContain(
+      'active',
+    )
+    expect(screen.getByRole('button', { name: 'Rk' }).className).not.toContain(
+      'active',
+    )
+  })
+})

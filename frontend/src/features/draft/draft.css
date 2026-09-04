@@ -280,6 +280,33 @@
   background: var(--surface-1);
 }
 
+/* A clickable column header doubling as a sort toggle -- inherits the th's
+   own type styling rather than looking like a button, with the active column
+   picked out by colour and an arrow rather than a background change (a
+   sticky header repainting on click reads as a glitch). */
+.draft-pool-sort-btn {
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.draft-pool-sort-btn:hover {
+  color: var(--text-primary);
+}
+
+.draft-pool-sort-btn.active {
+  color: var(--text-primary);
+}
+
+.draft-pool-sort-btn.active::after {
+  content: ' ▾';
+}
+
 .draft-pool-actions {
   display: flex;
   gap: 6px;

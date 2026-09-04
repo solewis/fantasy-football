@@ -1,3 +1,5 @@
+import logging
+import time
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, func
@@ -9,6 +11,13 @@ from app.ingest.errors import PlatformFetchError
 from app.models import Draft, DraftPick, DraftQueueEntry, League, PlatformPlayer
 
 PLATFORM = "sleeper"
+
+logger = logging.getLogger(__name__)
+# The frontend polls every 2s and skips a tick if the previous sync is still
+# in flight -- a single slow platform call doesn't just delay one refresh, it
+# silently eats every tick until it returns, which reads as a much longer
+# stall than it is. Logged rather than guessed at next time it happens.
+SLOW_SYNC_THRESHOLD_S = 1.0
 
 
 def _team_names_by_slot(
@@ -131,7 +140,11 @@ def sync_draft(session: Session, draft_id: int) -> dict:
 
     module = platforms.draft_ingest(draft.platform)
     try:
+        started = time.monotonic()
         raw_picks = module.fetch_raw_picks(draft.platform_draft_id)
+        elapsed = time.monotonic() - started
+        if elapsed > SLOW_SYNC_THRESHOLD_S:
+            logger.warning("sync_draft %s: fetch_raw_picks took %.2fs", draft_id, elapsed)
     except PlatformFetchError as exc:
         raise DraftError(str(exc)) from exc
 
@@ -143,8 +156,12 @@ def sync_draft(session: Session, draft_id: int) -> dict:
         league = session.get(League, draft.league_id)
         if league is not None:
             try:
+                started = time.monotonic()
                 raw_draft = module.fetch_raw_draft(draft.platform_draft_id)
                 meta = module.parse_draft_meta(raw_draft)
+                elapsed = time.monotonic() - started
+                if elapsed > SLOW_SYNC_THRESHOLD_S:
+                    logger.warning("sync_draft %s: fetch_raw_draft took %.2fs", draft_id, elapsed)
             except PlatformFetchError as exc:
                 raise DraftError(str(exc)) from exc
             draft.team_names = (

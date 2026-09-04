@@ -268,6 +268,7 @@
 .draft-pool-table th {
   position: sticky;
   top: 0;
+  z-index: 1;
   background: var(--surface-page);
   font-size: 11px;
   text-transform: uppercase;

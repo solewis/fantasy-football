@@ -6,16 +6,18 @@ import {
 } from '../../components/PlatformTabs'
 import { FORMATS } from '../../lib/formats'
 import { BuildPage } from './BuildPage'
+import { ComparePage } from './ComparePage'
 import { RankingsPage } from './RankingsPage'
 import { SourcesPage } from './SourcesPage'
 import './rankings.css'
 
-const SUB_VIEWS = ['sources', 'build', 'edit'] as const
+const SUB_VIEWS = ['sources', 'build', 'compare', 'edit'] as const
 type SubView = (typeof SUB_VIEWS)[number]
 
 const SUB_VIEW_LABELS: Record<SubView, string> = {
   sources: 'Sources',
   build: 'Build',
+  compare: 'Compare',
   edit: 'Edit',
 }
 
@@ -97,6 +99,13 @@ export function RankingsSection() {
       )}
       {subView === 'build' && (
         <BuildPage
+          key={`${platform}:${format}`}
+          platform={platform}
+          format={format}
+        />
+      )}
+      {subView === 'compare' && (
+        <ComparePage
           key={`${platform}:${format}`}
           platform={platform}
           format={format}

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PlayerRow } from '../../api/players'
@@ -84,7 +90,7 @@ function mockFetch({
   rankSetRanks?: RankRow[]
   /** What GET /rank-sets returns -- the pool reads this to find your
    * per-position lists. */
-  rankSets?: { id: number; scope: string; is_active?: boolean }[]
+  rankSets?: { id: number; name?: string; scope: string; is_active?: boolean }[]
   ranksBySetId?: Record<number, RankRow[]>
 } = {}) {
   const fetchMock = vi.fn((url: string) => {
@@ -152,7 +158,9 @@ describe('DraftPlayerPool', () => {
     expect(calledUrls.some((url) => url.includes('/ranks?'))).toBe(false)
   })
 
-  it('excludes already-drafted players', async () => {
+  it('keeps a drafted player visible, grayed out, with actions disabled', async () => {
+    // Seeing the whole tier -- who's gone, who's left -- is the point;
+    // removing drafted players would hide exactly that.
     mockFetch({ ranks: savedRanks })
 
     render(
@@ -169,7 +177,17 @@ describe('DraftPlayerPool', () => {
     )
 
     expect(await screen.findByText("Ja'Marr Chase")).toBeInTheDocument()
-    expect(screen.queryByText('Bijan Robinson')).not.toBeInTheDocument()
+    const bijanRow = screen
+      .getAllByRole('row')
+      .find((r) => r.textContent?.includes('Bijan Robinson'))
+    expect(bijanRow).toBeDefined()
+    expect(bijanRow?.className).toContain('drafted')
+    expect(
+      within(bijanRow!).queryByRole('button', { name: 'Draft' }),
+    ).toBeNull()
+    expect(
+      within(bijanRow!).getByRole('button', { name: 'Drafted' }),
+    ).toBeDisabled()
   })
 
   it('Draft button calls onDraft with the player id', async () => {
@@ -299,16 +317,19 @@ describe('marks carried through from the rankings builder', () => {
     expect(screen.getByText('fade')).toBeInTheDocument()
   })
 
-  it('draws a tier break where the tier number changes', async () => {
+  it('draws a tier break where the tier number changes, as its own divider row', async () => {
     mockFetch({ ranks: markedRanks })
     renderPool()
     await screen.findByText('Bijan Robinson')
 
+    // Bijan (tier 1, carries the major break), the divider, then Chase (tier 2).
     const rows = screen.getAllByRole('row').slice(1)
-    expect(rows[0].className).not.toContain('tier-break')
-    // break_after only picks the weight
-    expect(rows[1].className).toContain('tier-break-major')
-    expect(screen.getByText('Tier 2')).toBeInTheDocument()
+    expect(rows[0].className).not.toContain('draft-pool-tier-divider')
+    expect(rows[1].className).toContain('draft-pool-tier-divider')
+    expect(rows[1].className).toContain('major')
+    expect(rows[2].textContent).toContain("Ja'Marr Chase")
+    expect(screen.getByText(/Tier 2/)).toBeInTheDocument()
+    expect(screen.getByText(/big drop/)).toBeInTheDocument()
   })
 
   it('still shows tiers for a list saved before break weights existed', async () => {
@@ -323,12 +344,14 @@ describe('marks carried through from the rankings builder', () => {
     await screen.findByText('Bijan Robinson')
 
     const rows = screen.getAllByRole('row').slice(1)
-    expect(rows[1].className).toContain('tier-break-minor')
+    expect(rows[1].className).toContain('draft-pool-tier-divider')
+    expect(rows[1].className).toContain('minor')
   })
 
-  it('keeps the divider when the player carrying the break is drafted', async () => {
-    // The break belongs to a player who is now off the board, so keying off
-    // that player's break_after would lose the divider entirely.
+  it('keeps the tier divider correctly placed when the player carrying the break is drafted', async () => {
+    // The break belongs to a player who is now drafted -- keying off that
+    // player's break_after must not lose the divider, and the player himself
+    // must not disappear either.
     mockFetch({ ranks: markedRanks })
     render(
       <DraftPlayerPool
@@ -344,9 +367,11 @@ describe('marks carried through from the rankings builder', () => {
     )
     await screen.findByText("Ja'Marr Chase")
 
-    // Chase (tier 2) now sits directly below the ADP tail boundary rather
-    // than below his tier-1 predecessor, so no stale divider is drawn.
-    expect(screen.queryByText('Bijan Robinson')).toBeNull()
+    const bijanRow = screen
+      .getAllByRole('row')
+      .find((r) => r.textContent?.includes('Bijan Robinson'))
+    expect(bijanRow?.className).toContain('drafted')
+    expect(screen.getByText(/big drop/)).toBeInTheDocument()
   })
 
   it('shows no break markers when the rank set has none', async () => {
@@ -354,9 +379,8 @@ describe('marks carried through from the rankings builder', () => {
     renderPool()
     await screen.findByText('Bijan Robinson')
 
-    for (const row of screen.getAllByRole('row').slice(1)) {
-      expect(row.className).not.toContain('tier-break')
-    }
+    expect(document.querySelector('.draft-pool-tier-divider')).toBeNull()
+    expect(screen.queryByText(/^Tier \d/)).toBeNull()
     expect(screen.queryByText('target')).toBeNull()
   })
 })
@@ -522,8 +546,10 @@ describe('per-position lists', () => {
       expect(screen.getByText('target')).toBeInTheDocument()
     })
     expect(screen.getByText('fade')).toBeInTheDocument()
+    // Puka (tier 1, carries the major break), the divider, then Bijan (tier 2).
     const rows = screen.getAllByRole('row').slice(1)
-    expect(rows[1].className).toContain('tier-break-major')
+    expect(rows[1].className).toContain('draft-pool-tier-divider')
+    expect(rows[1].className).toContain('major')
   })
 
   it('falls back to filtering the overall list for a position with no list', async () => {
@@ -541,6 +567,97 @@ describe('per-position lists', () => {
 
     await waitFor(() => {
       expect(screen.queryByText(/Using your RB list/)).toBeNull()
+    })
+  })
+})
+
+describe('which rank set is in use', () => {
+  // With more than one rank set possible per format or position, "using your
+  // saved ranks" alone doesn't say which one -- this is what was reported as
+  // impossible to tell.
+
+  it('names the overall rank set backing the ALL tab', async () => {
+    mockFetch({
+      ranks: savedRanks,
+      rankSets: [{ id: 1, name: 'Half PPR Main', scope: 'overall' }],
+    })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+
+    expect(screen.getByText(/Half PPR Main/)).toBeInTheDocument()
+  })
+
+  it('says so when falling back to ADP, with no saved rank list to name', async () => {
+    mockFetch({ ranks: [] })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText("Ja'Marr Chase")
+
+    expect(screen.getByText(/Using ADP/)).toBeInTheDocument()
+  })
+
+  it('names the positional rank set backing a position tab', async () => {
+    mockFetch({
+      ranks: savedRanks,
+      rankSets: [{ id: 7, name: 'My WRs', scope: 'WR', is_active: true }],
+      ranksBySetId: {
+        7: [
+          {
+            rank: 1,
+            platform_player_id: '4',
+            name: 'Puka Nacua',
+            position: 'WR',
+            team: 'LAR',
+            adp: 4.0,
+            tier: null,
+            break_after: null,
+            flag: null,
+          },
+        ],
+      },
+    })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(screen.getByRole('tab', { name: 'WR' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/My WRs/)).toBeInTheDocument()
     })
   })
 })

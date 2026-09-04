@@ -23,6 +23,14 @@ export interface DraftPools {
    * caller filters `overall` instead. */
   byPosition: Partial<Record<BuildPosition, PoolRow[]>>
   source: RankedSource
+  /** The rank set backing `overall`, when source === 'saved'. With more than
+   * one overall list possible, "using your saved ranks" alone doesn't say
+   * which one -- this names it. Null when source === 'adp', since there's no
+   * set to name. */
+  overallSourceName: string | null
+  /** The rank set backing each position's list in `byPosition`, by the same
+   * reasoning -- which of possibly several QB/RB/WR/TE lists is in play. */
+  positionalSourceNames: Partial<Record<BuildPosition, string>>
 }
 
 /** Append everyone else by ADP below a list you built.
@@ -83,6 +91,7 @@ export async function fetchDraftPools(
   )
 
   const byPosition: Partial<Record<BuildPosition, PoolRow[]>> = {}
+  const positionalSourceNames: Partial<Record<BuildPosition, string>> = {}
   positionalSets.forEach((entry, index) => {
     const saved = positionalRanks[index]
     if (saved.length === 0) return
@@ -90,14 +99,32 @@ export async function fetchDraftPools(
       saved,
       adpRows.filter((row) => row.position === entry.position),
     )
+    positionalSourceNames[entry.position] = entry.set!.name
   })
 
+  // Which set backs the overall list: the one a League explicitly assigned,
+  // or -- mirroring the backend resolver's own rule (resolve_rank_set) --
+  // the lowest-id overall-scoped set, since rankSets already comes back
+  // ordered ascending by id.
+  const overallSet =
+    rankSetId != null
+      ? rankSets.find((s) => s.id === rankSetId)
+      : rankSets.find((s) => s.scope === 'overall')
+
   if (savedOverall.length === 0) {
-    return { overall: adpRows, byPosition, source: 'adp' }
+    return {
+      overall: adpRows,
+      byPosition,
+      source: 'adp',
+      overallSourceName: null,
+      positionalSourceNames,
+    }
   }
   return {
     overall: withAdpTail(savedOverall, adpRows),
     byPosition,
     source: 'saved',
+    overallSourceName: overallSet?.name ?? null,
+    positionalSourceNames,
   }
 }

@@ -617,15 +617,41 @@
   font-size: 13px;
 }
 
-/* Marks carried through from the rankings builder. A tier break is drawn on
-   the row *below* the player it follows, so a divider never trails off the
-   bottom of a filtered list. */
-.draft-pool-table tr.tier-break-minor > td {
-  border-top: 1px solid var(--border-strong, #4a4945);
+/* A tier break is its own full-width row rather than a border on the next
+   data row -- a thin border reads as just another row divider when you're
+   scanning fast mid-draft, and a big drop deserves to actually look like one.
+   Matches the builder's own tier-break divider (build.css's
+   .build-tier-break) so a tier looks and reads the same everywhere. */
+.draft-pool-tier-divider td {
+  padding: 3px 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #898781);
+  background: var(--surface-1, #1a1a19);
+  border-bottom: 1px dashed var(--border, #33322f);
 }
 
-.draft-pool-table tr.tier-break-major > td {
-  border-top: 3px double var(--text-muted, #898781);
+.draft-pool-tier-divider.major td {
+  padding: 5px 10px;
+  color: var(--text-secondary, #c3c2b7);
+  font-weight: 600;
+  border-bottom: 3px double var(--text-muted, #898781);
+}
+
+/* Kept in place rather than removed, so a tier's size (and how many of it
+   are gone) is always visible at a glance -- the whole point of asking to
+   see drafted players rather than have them vanish from view. */
+.draft-pool-table tr.drafted {
+  opacity: 0.4;
+}
+
+.draft-pool-table tr.drafted:hover {
+  background: transparent;
+}
+
+.draft-pool-table tr.drafted .player-name {
+  text-decoration: line-through;
 }
 
 .draft-pool-flag {
@@ -674,14 +700,6 @@
 .draft-pool-list-note {
   margin: 0 0 4px;
   font-size: 11px;
-  color: var(--text-muted, #898781);
-}
-
-.draft-pool-tier-note {
-  margin-left: 8px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--text-muted, #898781);
 }
 

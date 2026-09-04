@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 
 import { fetchDraftPools, type DraftPools } from '../../lib/fetchRankedPlayers'
 import {
@@ -99,13 +99,24 @@ export function DraftPlayerPool({
   // 0 means the draft is over -- nothing is on the clock to measure against.
   const showValue = position === 'ALL' && nextPickNumber > 0
 
+  // Drafted players stay in the list, grayed out, rather than disappearing --
+  // seeing the whole tier (who's gone, who's left) is the point of a tier in
+  // the first place, and a tier silently shrinking hides exactly the thing
+  // you'd want to notice ("I'm down to the last player in this tier").
   const rows = sourceRows.filter((row) => {
-    if (draftedIds.has(row.platform_player_id)) return false
     if (!usingPositionalList && position !== 'ALL' && row.position !== position)
       return false
     if (searchTerm && !row.name.toLowerCase().includes(searchTerm)) return false
     return true
   })
+
+  // Rk, ADP, Name, Team, Actions, plus the two value/reach columns when shown.
+  const columnCount = showValue ? 7 : 5
+
+  const sourceName =
+    position === 'ALL'
+      ? pools?.overallSourceName
+      : (pools?.positionalSourceNames[position as BuildPosition] ?? null)
 
   return (
     <div className="draft-pool">
@@ -140,9 +151,24 @@ export function DraftPlayerPool({
 
       {usingPositionalList && (
         <p className="draft-pool-list-note">
-          Using your {position} list — its own order, tiers and marks.
+          Using your {position} list
+          {sourceName && <> — “{sourceName}”</>} — its own order, tiers and
+          marks.
         </p>
       )}
+      {position === 'ALL' &&
+        (pools?.source === 'saved' ? (
+          <p className="draft-pool-list-note">
+            Using{sourceName ? <> “{sourceName}”</> : ' your saved ranks'} —
+            everyone else follows by ADP below it.
+          </p>
+        ) : (
+          pools !== null && (
+            <p className="draft-pool-list-note">
+              Using ADP — no saved rank list for this format.
+            </p>
+          )
+        ))}
 
       <div className="draft-pool-table-wrapper">
         {loading && pools === null ? (
@@ -173,114 +199,124 @@ export function DraftPlayerPool({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => (
-                <tr
-                  key={row.platform_player_id}
-                  className={[
-                    row.flag ? `flag-${row.flag}` : '',
-                    // Driven by the tier *number* changing, not by the
-                    // previous row's break_after. Two reasons: lists saved
-                    // before break weights existed have tiers but no
-                    // break_after, and the player carrying the break is often
-                    // already drafted and filtered out of view. break_after
-                    // only picks the weight when it happens to be there.
-                    index > 0 &&
-                    row.tier !== null &&
-                    rows[index - 1].tier !== null &&
-                    row.tier !== rows[index - 1].tier
-                      ? `tier-break-${rows[index - 1].break_after ?? 'minor'}`
-                      : '',
-                    row.unranked ? 'unranked' : '',
-                    // The first row past your own list, so you can see at a
-                    // glance that you're off the end of your ranks.
-                    row.unranked && index > 0 && !rows[index - 1].unranked
-                      ? 'unranked-start'
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                >
-                  <td>{row.rank}</td>
-                  <td>{row.adp !== null ? row.adp.toFixed(1) : '—'}</td>
-                  {showValue && (
-                    <>
-                      <td>
-                        <DeltaChip
-                          sourceRank={
-                            row.adp !== null ? Math.round(row.adp) : null
-                          }
-                          slot={nextPickNumber}
-                          bounds={PICK_BOUNDS}
-                          sourceLabel="ADP"
-                          slotLabel={`pick ${nextPickNumber}`}
-                        />
-                      </td>
-                      <td>
-                        <DeltaChip
-                          sourceRank={row.unranked ? null : row.rank}
-                          slot={nextPickNumber}
-                          bounds={PICK_BOUNDS}
-                          sourceLabel="Your rank"
-                          slotLabel={`pick ${nextPickNumber}`}
-                        />
-                      </td>
-                    </>
-                  )}
-                  <td>
-                    <PositionTag position={row.position} />
-                    <span className="player-name">{row.name}</span>
-                    {row.flag === 'target' && (
-                      <span
-                        className="draft-pool-flag target"
-                        title="You marked this player a target"
-                      >
-                        target
-                      </span>
-                    )}
-                    {row.flag === 'fade' && (
-                      <span
-                        className="draft-pool-flag fade"
-                        title="You marked this player a fade"
-                      >
-                        fade
-                      </span>
-                    )}
-                    {index > 0 &&
-                      row.tier !== null &&
-                      rows[index - 1].tier !== null &&
-                      row.tier !== rows[index - 1].tier && (
-                        <span className="draft-pool-tier-note">
+              {rows.map((row, index) => {
+                const prev = index > 0 ? rows[index - 1] : null
+                // Driven by the tier *number* changing, not by the previous
+                // row's break_after -- a list saved before break weights
+                // existed has tiers but no break_after at all.
+                const tierChanges =
+                  prev !== null &&
+                  row.tier !== null &&
+                  prev.tier !== null &&
+                  row.tier !== prev.tier
+                const breakWeight = tierChanges
+                  ? (prev!.break_after ?? 'minor')
+                  : null
+                const drafted = draftedIds.has(row.platform_player_id)
+                const unrankedStart =
+                  row.unranked && prev !== null && !prev.unranked
+
+                return (
+                  <Fragment key={row.platform_player_id}>
+                    {tierChanges && (
+                      <tr className={`draft-pool-tier-divider ${breakWeight}`}>
+                        <td colSpan={columnCount}>
                           Tier {row.tier}
-                        </span>
-                      )}
-                    {row.unranked && index > 0 && !rows[index - 1].unranked && (
-                      <span className="draft-pool-unranked-note">
-                        past your ranks — ADP order below
-                      </span>
+                          {breakWeight === 'major' && ' · big drop'}
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td>{row.team ?? '—'}</td>
-                  <td className="draft-pool-actions">
-                    {canDraft && (
-                      <button
-                        type="button"
-                        onClick={() => onDraft(row.platform_player_id)}
-                      >
-                        Draft
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onQueue(row.platform_player_id)}
-                      disabled={queuedIds.has(row.platform_player_id)}
+                    <tr
+                      className={[
+                        drafted ? 'drafted' : '',
+                        row.flag ? `flag-${row.flag}` : '',
+                        row.unranked ? 'unranked' : '',
+                        // The first row past your own list, so you can see at
+                        // a glance that you're off the end of your ranks.
+                        unrankedStart ? 'unranked-start' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
                     >
-                      {queuedIds.has(row.platform_player_id)
-                        ? 'Queued'
-                        : '+ Queue'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      <td>{row.rank}</td>
+                      <td>{row.adp !== null ? row.adp.toFixed(1) : '—'}</td>
+                      {showValue && (
+                        <>
+                          <td>
+                            <DeltaChip
+                              sourceRank={
+                                row.adp !== null ? Math.round(row.adp) : null
+                              }
+                              slot={nextPickNumber}
+                              bounds={PICK_BOUNDS}
+                              sourceLabel="ADP"
+                              slotLabel={`pick ${nextPickNumber}`}
+                            />
+                          </td>
+                          <td>
+                            <DeltaChip
+                              sourceRank={row.unranked ? null : row.rank}
+                              slot={nextPickNumber}
+                              bounds={PICK_BOUNDS}
+                              sourceLabel="Your rank"
+                              slotLabel={`pick ${nextPickNumber}`}
+                            />
+                          </td>
+                        </>
+                      )}
+                      <td>
+                        <PositionTag position={row.position} />
+                        <span className="player-name">{row.name}</span>
+                        {row.flag === 'target' && (
+                          <span
+                            className="draft-pool-flag target"
+                            title="You marked this player a target"
+                          >
+                            target
+                          </span>
+                        )}
+                        {row.flag === 'fade' && (
+                          <span
+                            className="draft-pool-flag fade"
+                            title="You marked this player a fade"
+                          >
+                            fade
+                          </span>
+                        )}
+                        {unrankedStart && (
+                          <span className="draft-pool-unranked-note">
+                            past your ranks — ADP order below
+                          </span>
+                        )}
+                      </td>
+                      <td>{row.team ?? '—'}</td>
+                      <td className="draft-pool-actions">
+                        {canDraft && !drafted && (
+                          <button
+                            type="button"
+                            onClick={() => onDraft(row.platform_player_id)}
+                          >
+                            Draft
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onQueue(row.platform_player_id)}
+                          disabled={
+                            drafted || queuedIds.has(row.platform_player_id)
+                          }
+                        >
+                          {drafted
+                            ? 'Drafted'
+                            : queuedIds.has(row.platform_player_id)
+                              ? 'Queued'
+                              : '+ Queue'}
+                        </button>
+                      </td>
+                    </tr>
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         )}

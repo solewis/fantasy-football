@@ -20,8 +20,10 @@ import './draft.css'
 
 // A mock draft with bots picks about once a second, so 5s made the board
 // feel a long way behind. Each sync is ~100ms against a local backend, so a
-// tighter loop costs little.
-const SYNC_INTERVAL_MS = 2000
+// tighter loop costs little -- and most of the remaining wait is Sleeper's
+// own API lagging behind a just-made pick, not this interval, so tightening
+// it further only lowers the ceiling rather than fixing the real source.
+const SYNC_INTERVAL_MS = 1000
 
 interface DraftRoomProps {
   draftId: number

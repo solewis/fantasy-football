@@ -89,9 +89,24 @@
   font-variant-numeric: tabular-nums;
 }
 
-.compare-tier {
-  margin-left: 6px;
+/* A tier break is its own full-width row rather than a border on the next
+   data row -- a thin border reads as just another row divider when
+   scanning fast, and a big drop deserves to actually look like one. Same
+   visual language as the draft pool's own tier divider and the builder's
+   .build-tier-break, so a tier looks and reads the same everywhere. */
+.compare-tier-divider td {
+  padding: 3px 10px;
   font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--text-muted, #898781);
-  font-variant-numeric: tabular-nums;
+  background: var(--surface-1, #1a1a19);
+  border-bottom: 1px dashed var(--border, #33322f);
+}
+
+.compare-tier-divider.major td {
+  padding: 5px 10px;
+  color: var(--text-secondary, #c3c2b7);
+  font-weight: 600;
+  border-bottom: 3px double var(--text-muted, #898781);
 }

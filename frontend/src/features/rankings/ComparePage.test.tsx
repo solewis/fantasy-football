@@ -227,6 +227,83 @@ describe('ComparePage', () => {
     expect(screen.getByText('6 (+4)')).toBeInTheDocument()
   })
 
+  it('shows an average across the checked sources, excluding ADP', async () => {
+    mockFetch({
+      ranksBySetId: { 1: WR_RANKS },
+      poolPlayers: [
+        {
+          platform_player_id: 'w1',
+          name: 'Garrett Wilson',
+          position: 'WR',
+          team: 'NYJ',
+          adp: 22.0,
+          ranks: { adp: 999, 'dataset:1': 3 },
+        },
+      ],
+    })
+    render(<ComparePage platform="sleeper" format="half_ppr" />)
+    fireEvent.change(
+      await screen.findByRole('combobox', { name: 'My rank set' }),
+      { target: { value: '1' } },
+    )
+    await screen.findByText('Garrett Wilson')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /ADP/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /FantasyPros/ }))
+
+    // Only FantasyPros (3) counts -- ADP's wildly different 999 must not
+    // drag the average anywhere near it.
+    await waitFor(() => {
+      expect(screen.getByText('3.0')).toBeInTheDocument()
+    })
+  })
+
+  it('hides the average column entirely when no source is checked', async () => {
+    mockFetch({ ranksBySetId: { 1: WR_RANKS } })
+    render(<ComparePage platform="sleeper" format="half_ppr" />)
+    fireEvent.change(
+      await screen.findByRole('combobox', { name: 'My rank set' }),
+      { target: { value: '1' } },
+    )
+    await screen.findByText('Garrett Wilson')
+
+    expect(screen.queryByRole('columnheader', { name: 'Avg' })).toBeNull()
+  })
+
+  it('draws a tier break where the tier number changes, as its own divider row', async () => {
+    mockFetch({ ranksBySetId: { 1: WR_RANKS } })
+    render(<ComparePage platform="sleeper" format="half_ppr" />)
+    fireEvent.change(
+      await screen.findByRole('combobox', { name: 'My rank set' }),
+      { target: { value: '1' } },
+    )
+    await screen.findByText('Garrett Wilson')
+
+    const rows = screen.getAllByRole('row').slice(1)
+    // Wilson (tier 1), the divider, then Nacua (tier 2).
+    expect(rows[0].className).not.toContain('compare-tier-divider')
+    expect(rows[1].className).toContain('compare-tier-divider')
+    expect(rows[1].className).toContain('minor')
+    expect(rows[2].textContent).toContain('Puka Nacua')
+    expect(screen.getByText(/Tier 2/)).toBeInTheDocument()
+  })
+
+  it('marks a major break more prominently than a minor one', async () => {
+    const majorBreak = [{ ...WR_RANKS[0], break_after: 'major' }, WR_RANKS[1]]
+    mockFetch({ ranksBySetId: { 1: majorBreak } })
+    render(<ComparePage platform="sleeper" format="half_ppr" />)
+    fireEvent.change(
+      await screen.findByRole('combobox', { name: 'My rank set' }),
+      { target: { value: '1' } },
+    )
+    await screen.findByText('Garrett Wilson')
+
+    const rows = screen.getAllByRole('row').slice(1)
+    expect(rows[1].className).toContain('compare-tier-divider')
+    expect(rows[1].className).toContain('major')
+    expect(screen.getByText(/big drop/)).toBeInTheDocument()
+  })
+
   it('filters players by name', async () => {
     mockFetch({ ranksBySetId: { 1: WR_RANKS } })
     render(<ComparePage platform="sleeper" format="half_ppr" />)

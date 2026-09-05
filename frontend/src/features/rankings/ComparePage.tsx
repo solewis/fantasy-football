@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 
 import {
   fetchAvailableSources,
@@ -15,6 +15,7 @@ import {
 } from '../../api/ranks'
 import type { SupportedPlatform } from '../../components/PlatformTabs'
 import { DeltaChip } from '../../components/DeltaChip'
+import { summarizeCandidates } from '../../lib/consensus'
 import { boundsForSlot } from '../../lib/deltaBuckets'
 import { SEASON } from '../../lib/formats'
 import { moveInOrder, reconcileOrder, sortByOrder } from '../../lib/sourceOrder'
@@ -222,6 +223,23 @@ export function ComparePage({ platform, format }: ComparePageProps) {
     return map
   }, [pool])
 
+  // Same rule as the builder's own Avg column, including ADP's exclusion
+  // from it -- reused rather than reimplemented so the two can't drift.
+  // excludeIds is empty here on purpose: nothing is ever "already placed" in
+  // a read-only comparison, every row gets a summary.
+  const averageByPlayer = useMemo(() => {
+    const map = new Map<string, number | null>()
+    if (!pool) return map
+    for (const summary of summarizeCandidates(
+      pool.players,
+      eligibleRefs,
+      new Set(),
+    )) {
+      map.set(summary.platform_player_id, summary.average)
+    }
+    return map
+  }, [pool, eligibleRefs])
+
   const searchTerm = search.trim().toLowerCase()
   const rows = baselineRows.filter(
     (row) => !searchTerm || row.name.toLowerCase().includes(searchTerm),
@@ -299,6 +317,7 @@ export function ComparePage({ platform, format }: ComparePageProps) {
                   <thead>
                     <tr>
                       <th>Rk</th>
+                      {activeSources.length > 0 && <th>Avg</th>}
                       <th>Name</th>
                       <th>Team</th>
                       {activeSources.map((s) => (
@@ -309,33 +328,71 @@ export function ComparePage({ platform, format }: ComparePageProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row) => {
+                    {rows.map((row, index) => {
+                      const prev = index > 0 ? rows[index - 1] : null
+                      // Driven by the tier *number* changing, not by the
+                      // previous row's break_after -- a list saved before
+                      // break weights existed has tiers but no break_after.
+                      const tierChanges =
+                        prev !== null &&
+                        row.tier !== null &&
+                        prev.tier !== null &&
+                        row.tier !== prev.tier
+                      const breakWeight = tierChanges
+                        ? (prev!.break_after ?? 'minor')
+                        : null
                       const bounds = boundsForSlot(row.rank)
                       const sourceRanks =
                         ranksByPlayer.get(row.platform_player_id) ?? {}
+                      const average = averageByPlayer.get(
+                        row.platform_player_id,
+                      )
+
                       return (
-                        <tr key={row.platform_player_id}>
-                          <td className="compare-num">{row.rank}</td>
-                          <td>
-                            <PositionTag position={row.position} />
-                            <span className="player-name">{row.name}</span>
-                            {row.tier !== null && (
-                              <span className="compare-tier">T{row.tier}</span>
+                        <Fragment key={row.platform_player_id}>
+                          {tierChanges && (
+                            <tr
+                              className={`compare-tier-divider ${breakWeight}`}
+                            >
+                              <td
+                                colSpan={
+                                  3 +
+                                  (activeSources.length > 0 ? 1 : 0) +
+                                  activeSources.length
+                                }
+                              >
+                                Tier {row.tier}
+                                {breakWeight === 'major' && ' · big drop'}
+                              </td>
+                            </tr>
+                          )}
+                          <tr>
+                            <td className="compare-num">{row.rank}</td>
+                            {activeSources.length > 0 && (
+                              <td className="compare-num">
+                                {average !== null && average !== undefined
+                                  ? average.toFixed(1)
+                                  : '—'}
+                              </td>
                             )}
-                          </td>
-                          <td>{row.team ?? '—'}</td>
-                          {activeSources.map((s) => (
-                            <td key={s.ref}>
-                              <DeltaChip
-                                sourceRank={sourceRanks[s.ref] ?? null}
-                                slot={row.rank}
-                                bounds={bounds}
-                                sourceLabel={s.label}
-                                slotLabel={`your #${row.rank}`}
-                              />
+                            <td>
+                              <PositionTag position={row.position} />
+                              <span className="player-name">{row.name}</span>
                             </td>
-                          ))}
-                        </tr>
+                            <td>{row.team ?? '—'}</td>
+                            {activeSources.map((s) => (
+                              <td key={s.ref}>
+                                <DeltaChip
+                                  sourceRank={sourceRanks[s.ref] ?? null}
+                                  slot={row.rank}
+                                  bounds={bounds}
+                                  sourceLabel={s.label}
+                                  slotLabel={`your #${row.rank}`}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        </Fragment>
                       )
                     })}
                   </tbody>

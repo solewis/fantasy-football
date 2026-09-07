@@ -108,11 +108,13 @@ def create_rank_set(
     if existing:
         raise RankSetError(f"A rank set named {name!r} already exists for this format")
 
-    # A position's first-ever list is unambiguous, so it becomes active with no
-    # extra step. Once a position already has one, a new list is created
-    # inactive -- it's a fresh working copy, not an automatic replacement of
-    # whatever's currently feeding the overall build and the draft room.
-    is_active = scope != OVERALL and not (
+    # A scope's first-ever list is unambiguous, so it becomes active with no
+    # extra step -- including overall: an ad-hoc draft (no League to assign a
+    # rank_set_id from) has no way to pick one otherwise, so it falls back to
+    # whichever overall set is active. Once a scope already has one, a new
+    # list is created inactive -- it's a fresh working copy, not an automatic
+    # replacement of whatever's currently feeding the draft room.
+    is_active = not (
         session.query(RankSet)
         .filter_by(platform=platform, season=season, format=format, scope=scope)
         .first()
@@ -175,16 +177,16 @@ def rename_rank_set(session: Session, rank_set_id: int, name: str) -> RankSet:
 
 
 def set_active_rank_set(session: Session, rank_set_id: int) -> RankSet:
-    """Mark a positional rank set as the one the overall builder and the draft
-    room use for its position, deactivating whichever set previously held
-    that spot. Only meaningful for a positional scope -- an overall set has no
-    sibling to disambiguate from.
+    """Mark a rank set as the one used automatically for its scope --
+    a positional scope's active set feeds the overall builder's "next up"
+    panel and the draft room's position tab; an overall scope's active set
+    feeds the draft room's ALL tab for any draft with no League to assign a
+    rank_set_id from (see resolve_rank_set). Deactivates whichever set
+    previously held that spot for the same scope.
     """
     rank_set = get_rank_set(session, rank_set_id)
     if rank_set is None:
         raise RankSetError("Rank set not found")
-    if rank_set.scope == OVERALL:
-        raise RankSetError("Only a positional rank set can be marked active")
 
     session.query(RankSet).filter_by(
         platform=rank_set.platform,
@@ -203,13 +205,12 @@ def delete_rank_set(session: Session, rank_set_id: int) -> None:
     if rank_set is None:
         raise RankSetError("Rank set not found")
 
-    # Deleting the active set for a position would otherwise leave that
-    # position with zero active sets even though others still exist --
-    # promote the lowest remaining id (same "first created wins" rule used
-    # elsewhere) so the overall builder and draft room always have exactly one
-    # to fall back on.
+    # Deleting the active set for a scope would otherwise leave it with zero
+    # active sets even though others still exist -- promote the lowest
+    # remaining id (same "first created wins" rule used elsewhere) so the
+    # builder and draft room always have exactly one to fall back on.
     promoted = None
-    if rank_set.is_active and rank_set.scope != OVERALL:
+    if rank_set.is_active:
         promoted = (
             session.query(RankSet)
             .filter_by(
@@ -311,20 +312,25 @@ def replace_ranks(session: Session, rank_set_id: int, entries: list[RankEntryInp
 
 
 def resolve_rank_set(session: Session, platform: str, season: str, format: str) -> RankSet | None:
-    """TEMPORARY shim: the draft player pool asks "the ranks for half_ppr" without
-    knowing about any specific rank set. Lowest id (first-created) wins for a
-    format -- stable under later edits or new sets being created, unlike "most
-    recently updated" would be. Deleted once a Draft carries a real rank_set_id
-    via League (Phase C of the League-setup plan).
+    """The draft player pool asks "the ranks for half_ppr" for any draft with
+    no League (and so no explicit rank_set_id) to ask instead -- an ad-hoc
+    draft, or a League that's never had one assigned. The active overall set
+    wins, so a user with more than one overall list (e.g. a "real" one and a
+    draft-night experiment) can actually choose which one an ad-hoc draft
+    uses, the same way set_active_rank_set already lets them choose a
+    position's list. Falls back to lowest id (first-created) when nothing
+    happens to be marked active, which only occurs for data that predates the
+    active flag -- never leaves a working single-overall-set setup stranded.
 
     Restricted to overall sets on purpose. Without that filter a positional set
     with a lower id would win here and the draft pool would quietly show only
     receivers -- no error, just a wrong board, which is about the worst way for
     this to fail.
     """
-    return (
-        session.query(RankSet)
-        .filter_by(platform=platform, season=season, format=format, scope=OVERALL)
-        .order_by(RankSet.id.asc())
-        .first()
+    query = session.query(RankSet).filter_by(
+        platform=platform, season=season, format=format, scope=OVERALL
     )
+    active = query.filter_by(is_active=True).order_by(RankSet.id.asc()).first()
+    if active is not None:
+        return active
+    return query.order_by(RankSet.id.asc()).first()

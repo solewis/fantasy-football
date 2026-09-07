@@ -599,6 +599,42 @@ describe('which rank set is in use', () => {
     expect(screen.getByText(/Half PPR Main/)).toBeInTheDocument()
   })
 
+  it('names the active overall set, not just the first one, when more than one exists', async () => {
+    // An ad-hoc draft has no League to assign a rank_set_id from -- the
+    // active flag is the only way a user with two overall lists can choose
+    // which one it uses, so this must not silently prefer whichever set
+    // the backend happened to list first (its lowest id).
+    mockFetch({
+      ranks: savedRanks,
+      rankSets: [
+        { id: 1, name: 'Old Main', scope: 'overall', is_active: false },
+        {
+          id: 2,
+          name: 'Draft night experiment',
+          scope: 'overall',
+          is_active: true,
+        },
+      ],
+    })
+
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+
+    expect(screen.getByText(/Draft night experiment/)).toBeInTheDocument()
+    expect(screen.queryByText(/Old Main/)).toBeNull()
+  })
+
   it('says so when falling back to ADP, with no saved rank list to name', async () => {
     mockFetch({ ranks: [] })
 

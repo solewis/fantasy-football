@@ -1036,6 +1036,119 @@ describe('multiple positional rank sets per position', () => {
   })
 })
 
+describe('multiple overall rank sets', () => {
+  // An ad-hoc draft has no League to assign a rank_set_id from, so which
+  // overall set is active is the only way to choose which one it uses --
+  // the same "Set active" control positional lists already have.
+  const MAIN_RANKS = [
+    {
+      rank: 1,
+      platform_player_id: '1',
+      name: "Ja'Marr Chase",
+      position: 'WR',
+      team: 'CIN',
+      adp: 3.2,
+      tier: null,
+      break_after: null,
+      flag: null,
+    },
+  ]
+  const EXPERIMENT_RANKS = [
+    {
+      rank: 1,
+      platform_player_id: '2',
+      name: 'Puka Nacua',
+      position: 'WR',
+      team: 'LAR',
+      adp: 4.7,
+      tier: null,
+      break_after: null,
+      flag: null,
+    },
+  ]
+  const RANK_SETS = [
+    {
+      id: 20,
+      name: 'Main',
+      scope: 'overall',
+      platform: 'sleeper',
+      is_active: true,
+    },
+    {
+      id: 21,
+      name: 'Draft night experiment',
+      scope: 'overall',
+      platform: 'sleeper',
+      is_active: false,
+    },
+  ]
+
+  it('shows which overall set is active, and lets you switch to another', async () => {
+    const fetchMock = mockBackend(PLAYERS, {
+      rankSets: RANK_SETS,
+      ranksBySetId: { 20: MAIN_RANKS, 21: EXPERIMENT_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+
+    const select = screen.getByRole('combobox', {
+      name: 'Rank set',
+    }) as HTMLSelectElement
+    expect(select.options[1].textContent).toContain('(active)')
+    // The currently-loaded set ("Main") is already active -- no button.
+    expect(screen.queryByRole('button', { name: 'Set active' })).toBeNull()
+
+    fireEvent.change(select, { target: { value: '21' } })
+    await waitFor(() => {
+      expect(screen.getByText('Puka Nacua')).toBeInTheDocument()
+    })
+
+    const activateButton = screen.getByRole('button', { name: 'Set active' })
+    fireEvent.click(activateButton)
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            (url as string).endsWith('/rank-sets/21/activate') &&
+            (init as RequestInit)?.method === 'POST',
+        ),
+      ).toBe(true)
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Set active' })).toBeNull()
+    })
+  })
+
+  it('says the draft room specifically, not the overall build, for an overall set', async () => {
+    // A second overall set isn't ever a positional-list ambiguity -- the
+    // wording should say what actually depends on this being active.
+    mockBackend(PLAYERS, {
+      rankSets: RANK_SETS,
+      ranksBySetId: { 20: MAIN_RANKS, 21: EXPERIMENT_RANKS },
+    })
+    render(<BuildPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText("Ja'Marr Chase")
+    await waitFor(() => {
+      expect(screen.getByText('My list (1)')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Rank set' }), {
+      target: { value: 'new' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('My list (0)')).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText(/won't be used by the draft room until set active/i),
+    ).toBeInTheDocument()
+  })
+})
+
 describe('build progress survives navigating away and back', () => {
   // Rankings is a top-level tab -- switching to Leagues or Players fully
   // unmounts BuildPage (see App.tsx), so an unmount+remount here is exactly

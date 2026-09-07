@@ -223,7 +223,7 @@ def test_list_available_sources_marks_what_each_can_serve():
     assert by_label["My WRs"]["supports_overall"] is False
 
 
-def test_list_available_sources_reports_is_active_for_positional_sets_only():
+def test_list_available_sources_reports_is_active_for_rank_sets_only():
     session = make_session()
     seed(session)
     create_rank_set(session, "Main", "2026", "half_ppr", seed_from_adp=False)
@@ -233,7 +233,9 @@ def test_list_available_sources_reports_is_active_for_positional_sets_only():
 
     by_label = {s["label"]: s for s in sources}
     assert by_label["ADP"]["is_active"] is None
-    # Overall sets have no ambiguity to disambiguate -- is_active doesn't apply.
-    assert by_label["Main"]["is_active"] is None
-    # The only WR set that exists becomes active automatically on creation.
+    # The only set for its scope becomes active automatically on creation --
+    # true for overall as much as for a position, since an ad-hoc draft (no
+    # League to assign a rank_set_id from) needs an active overall set to
+    # resolve to too.
+    assert by_label["Main"]["is_active"] is True
     assert by_label["My WRs"]["is_active"] is True

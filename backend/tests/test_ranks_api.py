@@ -154,14 +154,21 @@ def test_post_activate_rank_set_switches_active_flag(api_client):
     assert by_id[second["id"]] is True
 
 
-def test_post_activate_rank_set_rejects_overall_scope(api_client):
+def test_post_activate_rank_set_works_for_overall_scope_too(api_client):
     client, session_factory = api_client
     seed(session_factory)
-    rank_set = create_rank_set(client, name="Main")
+    first = create_rank_set(client, name="Main")
+    second = create_rank_set(client, name="Draft night experiment")
+    assert second["is_active"] is False
 
-    response = client.post(f"/rank-sets/{rank_set['id']}/activate")
+    response = client.post(f"/rank-sets/{second['id']}/activate")
 
-    assert response.status_code == 400
+    assert response.status_code == 200
+    assert response.json()["is_active"] is True
+    rows = client.get("/rank-sets", params={"season": "2026", "format": "half_ppr"}).json()
+    by_id = {row["id"]: row["is_active"] for row in rows}
+    assert by_id[first["id"]] is False
+    assert by_id[second["id"]] is True
 
 
 def test_post_activate_rank_set_rejects_unknown_id(api_client):

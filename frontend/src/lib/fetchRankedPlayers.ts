@@ -104,12 +104,16 @@ export async function fetchDraftPools(
 
   // Which set backs the overall list: the one a League explicitly assigned,
   // or -- mirroring the backend resolver's own rule (resolve_rank_set) --
-  // the lowest-id overall-scoped set, since rankSets already comes back
-  // ordered ascending by id.
+  // whichever overall set is active, so an ad-hoc draft (no League to assign
+  // a rank_set_id from) actually reflects the set_active_rank_set choice
+  // instead of silently always using whichever one happens to have the
+  // lowest id. Falls back to the first overall set found, matching the
+  // resolver's own fallback for data that predates the active flag.
   const overallSet =
     rankSetId != null
       ? rankSets.find((s) => s.id === rankSetId)
-      : rankSets.find((s) => s.scope === 'overall')
+      : (rankSets.find((s) => s.scope === 'overall' && s.is_active) ??
+        rankSets.find((s) => s.scope === 'overall'))
 
   if (savedOverall.length === 0) {
     return {

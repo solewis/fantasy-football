@@ -165,9 +165,11 @@ def delete_rank_set_route(rank_set_id: int, db: DbSession) -> Response:
 
 @router.post("/rank-sets/{rank_set_id}/activate", response_model=RankSetSummary)
 def post_activate_rank_set(rank_set_id: int, db: DbSession) -> RankSetSummary:
-    """Mark a positional rank set as the one used for its position by the
-    overall builder and the draft room, deactivating whichever set held that
-    spot before.
+    """Mark a rank set as the one used automatically for its scope --
+    a positional scope's active set feeds the overall builder and the draft
+    room's position tab; an overall scope's active set feeds the draft room's
+    ALL tab for any draft with no League to assign a rank_set_id from.
+    Deactivates whichever set held that spot before.
     """
     try:
         rank_set = set_active_rank_set(db, rank_set_id)

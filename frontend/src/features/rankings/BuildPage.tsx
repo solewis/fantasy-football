@@ -499,8 +499,9 @@ export function BuildPage({ platform, format }: BuildPageProps) {
     }
   }
 
-  // Only meaningful for a positional target set that isn't already the one
-  // the overall builder and draft room use for that position.
+  // Only meaningful for a target set that isn't already the one used
+  // automatically for its scope -- the overall builder and draft room for a
+  // position, or an ad-hoc draft's ALL tab for overall.
   async function handleActivate() {
     if (typeof effectiveTarget !== 'number') return
     setActivating(true)
@@ -577,7 +578,7 @@ export function BuildPage({ platform, format }: BuildPageProps) {
           {targetSets.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
-              {scope !== 'overall' && s.is_active ? ' (active)' : ''}
+              {s.is_active ? ' (active)' : ''}
             </option>
           ))}
         </select>
@@ -592,26 +593,28 @@ export function BuildPage({ platform, format }: BuildPageProps) {
           />
         )}
 
-        {effectiveTarget === 'new' &&
-          scope !== 'overall' &&
-          targetSets.some((s) => s.is_active) && (
-            <span className="build-source-note">
-              Won't be used by the overall build or draft room until set active
-            </span>
-          )}
+        {effectiveTarget === 'new' && targetSets.some((s) => s.is_active) && (
+          <span className="build-source-note">
+            {scope === 'overall'
+              ? "Won't be used by the draft room until set active"
+              : "Won't be used by the overall build or draft room until set active"}
+          </span>
+        )}
 
-        {scope !== 'overall' &&
-          effectiveTargetSet &&
-          !effectiveTargetSet.is_active && (
-            <button
-              type="button"
-              onClick={handleActivate}
-              disabled={activating}
-              title="Use this list for the overall build and draft room"
-            >
-              {activating ? 'Setting active…' : 'Set active'}
-            </button>
-          )}
+        {effectiveTargetSet && !effectiveTargetSet.is_active && (
+          <button
+            type="button"
+            onClick={handleActivate}
+            disabled={activating}
+            title={
+              scope === 'overall'
+                ? 'Use this list for the draft room'
+                : 'Use this list for the overall build and draft room'
+            }
+          >
+            {activating ? 'Setting active…' : 'Set active'}
+          </button>
+        )}
 
         <button
           type="button"

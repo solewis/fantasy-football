@@ -256,13 +256,52 @@ def test_list_rank_sets_scoped_by_format_and_includes_player_count():
     assert rows[0]["player_count"] == 2
 
 
-def test_resolve_rank_set_picks_lowest_id_regardless_of_entry_count():
+def test_resolve_rank_set_picks_the_active_set_regardless_of_entry_count():
     session = make_session()
     seed_players(session)
     first = make_set(session, name="First")
     second = make_set(session, name="Second")
     # give the second (newer) set more entries than the first
     ranks.replace_ranks(session, second.id, entries(["1", "2", "3"]))
+
+    resolved = ranks.resolve_rank_set(session, "sleeper", "2026", "half_ppr")
+
+    # The first overall set created is the active one by default, so it wins
+    # even though the second has more entries -- entry count was never the
+    # rule, and this pins that down explicitly.
+    assert resolved is not None
+    assert resolved.id == first.id
+
+
+def test_resolve_rank_set_picks_whichever_overall_set_is_active():
+    session = make_session()
+    seed_players(session)
+    first = make_set(session, name="First")
+    second = make_set(session, name="Second")
+    assert first.is_active is True
+    assert second.is_active is False
+
+    ranks.set_active_rank_set(session, second.id)
+    resolved = ranks.resolve_rank_set(session, "sleeper", "2026", "half_ppr")
+
+    # An ad-hoc draft has no League to assign a rank_set_id from, so this is
+    # the only way a user with two overall lists can choose which one it
+    # uses -- switching the active flag must actually switch the resolver's
+    # answer, not just cosmetically flip a flag nothing reads.
+    assert resolved is not None
+    assert resolved.id == second.id
+
+
+def test_resolve_rank_set_falls_back_to_lowest_id_when_none_are_active():
+    # Only reachable for data older than the active flag -- a fresh
+    # create_rank_set always sets it on a scope's first set. Guards that
+    # such data doesn't strand the resolver with nothing to return.
+    session = make_session()
+    seed_players(session)
+    first = make_set(session, name="First")
+    make_set(session, name="Second")
+    session.query(RankSet).update({"is_active": False})
+    session.commit()
 
     resolved = ranks.resolve_rank_set(session, "sleeper", "2026", "half_ppr")
 
@@ -444,12 +483,24 @@ def test_create_rank_set_second_positional_set_starts_inactive():
     assert second.is_active is False
 
 
-def test_create_rank_set_overall_scope_is_never_active():
+def test_create_rank_set_first_overall_set_is_active_by_default():
+    # Matches positional scopes: an ad-hoc draft has no League to assign a
+    # rank_set_id from, so this is what lets resolve_rank_set find a set at
+    # all without the old, arbitrary "lowest id" tiebreak.
     session = make_session()
 
     rank_set = make_set(session, name="Main")
 
-    assert rank_set.is_active is False
+    assert rank_set.is_active is True
+
+
+def test_create_rank_set_second_overall_set_starts_inactive():
+    session = make_session()
+    make_set(session, name="Main")
+
+    second = make_set(session, name="Draft night experiment")
+
+    assert second.is_active is False
 
 
 def test_create_rank_set_active_by_position_is_independent():
@@ -477,12 +528,18 @@ def test_set_active_rank_set_deactivates_the_previous_one():
     assert first.is_active is False
 
 
-def test_set_active_rank_set_rejects_overall_scope():
+def test_set_active_rank_set_works_for_overall_scope_too():
     session = make_session()
-    rank_set = make_set(session, name="Main")
+    first = make_set(session, name="Main")
+    second = make_set(session, name="Draft night experiment")
+    assert first.is_active is True
+    assert second.is_active is False
 
-    with pytest.raises(ranks.RankSetError):
-        ranks.set_active_rank_set(session, rank_set.id)
+    activated = ranks.set_active_rank_set(session, second.id)
+
+    assert activated.is_active is True
+    session.refresh(first)
+    assert first.is_active is False
 
 
 def test_set_active_rank_set_rejects_unknown_id():

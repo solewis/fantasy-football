@@ -297,6 +297,101 @@ describe('ExposurePage', () => {
     ).toBe(false)
   })
 
+  it('the + button increments and saves immediately', async () => {
+    const fetchMock = mockFetch({
+      exposures: [exposureRow()],
+      postResponse: { ...exposureRow(), shares: 4 },
+    })
+    render(<ExposurePage />)
+    await chooseRankList()
+    const input = await screen.findByLabelText('Shares of Bijan Robinson')
+    await waitFor(() => expect(input).toHaveValue(3))
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Increase shares of Bijan Robinson' }),
+    )
+
+    await waitFor(() => {
+      expect(input).toHaveValue(4)
+    })
+    const post = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        (url as string).endsWith('/exposures') &&
+        (init as RequestInit)?.method === 'POST',
+    )
+    expect(post).toBeDefined()
+    const body = JSON.parse((post![1] as RequestInit).body as string) as {
+      shares: number
+    }
+    expect(body.shares).toBe(4)
+  })
+
+  it('the - button decrements, deleting the record once it reaches 0', async () => {
+    const fetchMock = mockFetch({ exposures: [exposureRow({ shares: 1 })] })
+    render(<ExposurePage />)
+    await chooseRankList()
+    const input = await screen.findByLabelText('Shares of Bijan Robinson')
+    await waitFor(() => expect(input).toHaveValue(1))
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Decrease shares of Bijan Robinson' }),
+    )
+
+    await waitFor(() => {
+      expect(input).toHaveValue(0)
+    })
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          /\/exposures\/1$/.exec(url as string) &&
+          (init as RequestInit)?.method === 'DELETE',
+      ),
+    ).toBe(true)
+  })
+
+  it('disables the - button once shares reaches 0', async () => {
+    mockFetch({ exposures: [] })
+    render(<ExposurePage />)
+    await chooseRankList()
+    await screen.findByLabelText('Shares of Garrett Wilson')
+
+    expect(
+      screen.getByRole('button', { name: 'Decrease shares of Garrett Wilson' }),
+    ).toBeDisabled()
+  })
+
+  it('the + button acts on an uncommitted typed value, not the last saved one', async () => {
+    const fetchMock = mockFetch({ exposures: [] })
+    render(<ExposurePage />)
+    await chooseRankList()
+    const input = await screen.findByLabelText('Shares of Garrett Wilson')
+
+    fireEvent.change(input, { target: { value: '5' } })
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Increase shares of Garrett Wilson' }),
+    )
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (url as string).endsWith('/exposures') &&
+          (init as RequestInit)?.method === 'POST',
+      )
+      expect(post).toBeDefined()
+    })
+    const post = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        (url as string).endsWith('/exposures') &&
+        (init as RequestInit)?.method === 'POST',
+    )
+    const body = JSON.parse((post![1] as RequestInit).body as string) as {
+      shares: number
+    }
+    // Typed 5, then +1 -- must save 6, not silently discard the typed 5 in
+    // favour of the last-saved value (0) and save 1 instead.
+    expect(body.shares).toBe(6)
+  })
+
   it('filters visible rows by name', async () => {
     mockFetch({ exposures: [] })
     render(<ExposurePage />)

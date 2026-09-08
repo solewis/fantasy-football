@@ -125,21 +125,14 @@ export function ExposurePage() {
     (row) => !searchTerm || row.name.toLowerCase().includes(searchTerm),
   )
 
-  async function commitShares(row: RankRow) {
-    const raw = draftShares[row.platform_player_id]
-    if (raw === undefined) return
-    setDraftShares(({ [row.platform_player_id]: _discard, ...rest }) => rest)
-
-    const parsed = Number(raw)
+  // Shared by the text box (on blur) and the +/- steppers -- both eventually
+  // just want "make this row's saved share count equal newValue".
+  async function applyShares(row: RankRow, newValue: number) {
     const current = exposuresById.get(row.platform_player_id)
-    // An invalid entry just reverts -- silently, since it's almost always a
-    // stray keystroke rather than something worth an error message for a
-    // single-user manual-entry field.
-    if (!Number.isInteger(parsed) || parsed < 0) return
-    if (parsed === (current?.shares ?? 0)) return
+    if (newValue === (current?.shares ?? 0)) return
 
     try {
-      if (parsed === 0) {
+      if (newValue === 0) {
         if (current) {
           await deleteExposure(current.id)
           setExposuresById((prev) => {
@@ -154,7 +147,7 @@ export function ExposurePage() {
         platform,
         season: SEASON,
         platform_player_id: row.platform_player_id,
-        shares: parsed,
+        shares: newValue,
       })
       setExposuresById((prev) =>
         new Map(prev).set(row.platform_player_id, updated),
@@ -162,6 +155,27 @@ export function ExposurePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update shares')
     }
+  }
+
+  async function commitShares(row: RankRow) {
+    const raw = draftShares[row.platform_player_id]
+    if (raw === undefined) return
+    setDraftShares(({ [row.platform_player_id]: _discard, ...rest }) => rest)
+
+    const parsed = Number(raw)
+    // An invalid entry just reverts -- silently, since it's almost always a
+    // stray keystroke rather than something worth an error message for a
+    // single-user manual-entry field.
+    if (!Number.isInteger(parsed) || parsed < 0) return
+    await applyShares(row, parsed)
+  }
+
+  // Acts on whatever's currently showing, including an uncommitted typed
+  // edit -- clicking + right after typing "5" should save 6, not silently
+  // discard the typed value in favour of whatever was last saved.
+  function bumpShares(row: RankRow, delta: number, displayed: number) {
+    setDraftShares(({ [row.platform_player_id]: _discard, ...rest }) => rest)
+    void applyShares(row, Math.max(0, displayed + delta))
   }
 
   return (
@@ -227,6 +241,17 @@ export function ExposurePage() {
               const shares =
                 exposuresById.get(row.platform_player_id)?.shares ?? 0
               const level = shareLevel(shares, maxShares)
+              const raw = draftShares[row.platform_player_id]
+              const rawParsed = raw !== undefined ? Number(raw) : NaN
+              // What the +/- buttons act on and display, honouring an
+              // uncommitted typed edit -- otherwise clicking + right after
+              // typing "5" would discard the typed value.
+              const displayed =
+                raw !== undefined &&
+                Number.isInteger(rawParsed) &&
+                rawParsed >= 0
+                  ? rawParsed
+                  : shares
               return (
                 <tr key={row.platform_player_id} data-share-level={level}>
                   <td className="exposure-rank">{row.rank}</td>
@@ -236,26 +261,43 @@ export function ExposurePage() {
                   </td>
                   <td>{row.team ?? '—'}</td>
                   <td>
-                    <input
-                      className="exposure-shares-input"
-                      type="number"
-                      min={0}
-                      inputMode="numeric"
-                      aria-label={`Shares of ${row.name}`}
-                      value={
-                        draftShares[row.platform_player_id] ?? String(shares)
-                      }
-                      onChange={(e) =>
-                        setDraftShares((prev) => ({
-                          ...prev,
-                          [row.platform_player_id]: e.target.value,
-                        }))
-                      }
-                      onBlur={() => commitShares(row)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.currentTarget.blur()
-                      }}
-                    />
+                    <div className="exposure-shares-control">
+                      <button
+                        type="button"
+                        className="exposure-shares-step"
+                        aria-label={`Decrease shares of ${row.name}`}
+                        onClick={() => bumpShares(row, -1, displayed)}
+                        disabled={displayed <= 0}
+                      >
+                        −
+                      </button>
+                      <input
+                        className="exposure-shares-input"
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        aria-label={`Shares of ${row.name}`}
+                        value={raw ?? String(shares)}
+                        onChange={(e) =>
+                          setDraftShares((prev) => ({
+                            ...prev,
+                            [row.platform_player_id]: e.target.value,
+                          }))
+                        }
+                        onBlur={() => commitShares(row)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') e.currentTarget.blur()
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="exposure-shares-step"
+                        aria-label={`Increase shares of ${row.name}`}
+                        onClick={() => bumpShares(row, 1, displayed)}
+                      >
+                        +
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )

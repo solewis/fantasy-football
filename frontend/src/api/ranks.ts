@@ -86,15 +86,24 @@ export async function fetchRanks(scope: RanksScope): Promise<RankRow[]> {
   return parseOrThrow(response, 'Fetching ranks')
 }
 
+export interface ListRankSetsParams {
+  platform?: string
+  season: string
+  /** Omit to list rank sets across every format -- the Exposure page has no
+   * format concept of its own to filter by, and wants every rank list a
+   * user could pick as an ordering source regardless of which format it was
+   * built under. */
+  format?: string
+  scope?: RankSetScope
+}
+
 export async function fetchRankSets(
-  scope: RanksScope,
+  params: ListRankSetsParams,
 ): Promise<RankSetSummary[]> {
-  const query = new URLSearchParams({
-    season: scope.season,
-    format: scope.format,
-  })
-  if (scope.platform) query.set('platform', scope.platform)
-  if (scope.scope) query.set('scope', scope.scope)
+  const query = new URLSearchParams({ season: params.season })
+  if (params.platform) query.set('platform', params.platform)
+  if (params.format) query.set('format', params.format)
+  if (params.scope) query.set('scope', params.scope)
   const response = await fetch(`${API_BASE}/rank-sets?${query.toString()}`)
   return parseOrThrow(response, 'Fetching rank sets')
 }

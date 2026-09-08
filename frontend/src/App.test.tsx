@@ -72,7 +72,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Exposure' }))
 
     expect(
-      await screen.findByPlaceholderText('Add a player…'),
+      await screen.findByRole('combobox', { name: 'Rank list' }),
     ).toBeInTheDocument()
   })
 })

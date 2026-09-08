@@ -64,4 +64,15 @@ describe('App', () => {
       await screen.findByPlaceholderText('Find player'),
     ).toBeInTheDocument()
   })
+
+  it('switches to the Exposure tab when clicked', async () => {
+    render(<App />)
+    await screen.findByText(/No leagues yet/)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Exposure' }))
+
+    expect(
+      await screen.findByPlaceholderText('Add a player…'),
+    ).toBeInTheDocument()
+  })
 })

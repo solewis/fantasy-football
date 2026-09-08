@@ -440,3 +440,23 @@ class ChunkMention(Base):
     # Times this name appears in the chunk. A passage that names a player once
     # in a list is not a passage about that player.
     occurrences: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class PlayerExposure(Base):
+    """How many teams/rosters (across however many leagues and drafts) you
+    have a given player on -- manually entered for now, not derived from
+    actual League rosters. season-scoped, not format-scoped: a share is a
+    roster spot, which doesn't depend on how that league scores.
+    """
+
+    __tablename__ = "player_exposures"
+    __table_args__ = (
+        UniqueConstraint("platform", "season", "platform_player_id", name="uq_player_exposure"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String, index=True)
+    season: Mapped[str] = mapped_column(String, index=True)
+    platform_player_id: Mapped[str] = mapped_column(String, index=True)
+    shares: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)

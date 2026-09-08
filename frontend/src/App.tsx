@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { ExposurePage } from './features/exposure/ExposurePage'
 import { LeaguesSection } from './features/leagues/LeaguesSection'
 import { PlayersPage } from './features/players/PlayersPage'
 import { RankingsSection } from './features/rankings/RankingsSection'
@@ -8,7 +9,7 @@ import { RankingsSection } from './features/rankings/RankingsSection'
 // (LeaguesSection drills into LeagueDetailPage, which has its own Draft
 // section), with an ad-hoc/non-league path reachable as a de-emphasized
 // footer link from the Leagues list rather than a top-level peer.
-const TABS = ['Leagues', 'Rankings', 'Players'] as const
+const TABS = ['Leagues', 'Rankings', 'Players', 'Exposure'] as const
 type Tab = (typeof TABS)[number]
 
 function App() {
@@ -37,6 +38,7 @@ function App() {
         {activeTab === 'Players' && <PlayersPage />}
         {activeTab === 'Rankings' && <RankingsSection />}
         {activeTab === 'Leagues' && <LeaguesSection />}
+        {activeTab === 'Exposure' && <ExposurePage />}
       </main>
     </div>
   )

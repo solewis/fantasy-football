@@ -495,6 +495,62 @@ describe('ExposurePage', () => {
     expect(screen.getByText('Bijan Robinson')).toBeInTheDocument()
   })
 
+  it('the "Only owned" checkbox hides players with 0 shares', async () => {
+    mockFetch({ exposures: [exposureRow({ shares: 3 })] })
+    render(<ExposurePage />)
+    await chooseRankList()
+    await screen.findByText('Garrett Wilson')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Only owned' }))
+
+    expect(screen.queryByText('Garrett Wilson')).toBeNull()
+    expect(screen.getByText('Bijan Robinson')).toBeInTheDocument()
+  })
+
+  it('un-checking "Only owned" brings the 0-share players back', async () => {
+    mockFetch({ exposures: [exposureRow({ shares: 3 })] })
+    render(<ExposurePage />)
+    await chooseRankList()
+    await screen.findByText('Garrett Wilson')
+    const checkbox = screen.getByRole('checkbox', { name: 'Only owned' })
+
+    fireEvent.click(checkbox)
+    expect(screen.queryByText('Garrett Wilson')).toBeNull()
+    fireEvent.click(checkbox)
+
+    expect(screen.getByText('Garrett Wilson')).toBeInTheDocument()
+  })
+
+  it('a player who gains shares stops being hidden by "Only owned"', async () => {
+    mockFetch({ exposures: [] })
+    render(<ExposurePage />)
+    await chooseRankList()
+    await screen.findByText('Garrett Wilson')
+    // Bump while still visible -- the row disappears the instant the
+    // checkbox goes on, so there'd be no button left to click afterward.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Increase shares of Garrett Wilson' }),
+    )
+    await waitFor(() => {
+      expect(screen.getByLabelText('Shares of Garrett Wilson')).toHaveValue(1)
+    })
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Only owned' }))
+
+    expect(screen.getByText('Garrett Wilson')).toBeInTheDocument()
+  })
+
+  it('shows a specific message when the owned-only filter empties the list', async () => {
+    mockFetch({ exposures: [] })
+    render(<ExposurePage />)
+    await chooseRankList()
+    await screen.findByText('Garrett Wilson')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Only owned' }))
+
+    expect(await screen.findByText(/no owned players/i)).toBeInTheDocument()
+  })
+
   it('marks the highest-shares row with the top gradient level', async () => {
     mockFetch({
       exposures: [

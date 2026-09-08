@@ -22,6 +22,16 @@
   min-width: 200px;
 }
 
+.exposure-owned-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text-secondary, #c3c2b7);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .exposure-status,
 .exposure-error {
   padding: 24px;

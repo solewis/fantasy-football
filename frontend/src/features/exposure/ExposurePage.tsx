@@ -55,6 +55,7 @@ export function ExposurePage() {
     new Map(),
   )
   const [search, setSearch] = useState('')
+  const [ownedOnly, setOwnedOnly] = useState(false)
   const [loadingRankSets, setLoadingRankSets] = useState(true)
   const [loadingRows, setLoadingRows] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -150,9 +151,15 @@ export function ExposurePage() {
   )
 
   const searchTerm = search.trim().toLowerCase()
-  const visibleRows = rows.filter(
-    (row) => !searchTerm || row.name.toLowerCase().includes(searchTerm),
-  )
+  const visibleRows = rows.filter((row) => {
+    if (searchTerm && !row.name.toLowerCase().includes(searchTerm)) return false
+    if (
+      ownedOnly &&
+      (exposuresById.get(row.platform_player_id)?.shares ?? 0) === 0
+    )
+      return false
+    return true
+  })
 
   // Shared by the text box (on blur) and the +/- steppers -- both eventually
   // just want "make this row's saved share count equal newValue".
@@ -228,14 +235,24 @@ export function ExposurePage() {
           ))}
         </select>
         {rankSetId !== null && (
-          <input
-            className="exposure-search"
-            type="text"
-            placeholder="Find player"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Find player"
-          />
+          <>
+            <input
+              className="exposure-search"
+              type="text"
+              placeholder="Find player"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Find player"
+            />
+            <label className="exposure-owned-only">
+              <input
+                type="checkbox"
+                checked={ownedOnly}
+                onChange={(e) => setOwnedOnly(e.target.checked)}
+              />
+              Only owned
+            </label>
+          </>
         )}
       </div>
 
@@ -254,7 +271,11 @@ export function ExposurePage() {
       ) : rows.length === 0 ? (
         <p className="exposure-status">This rank list is empty.</p>
       ) : visibleRows.length === 0 ? (
-        <p className="exposure-status">No player matching "{search.trim()}".</p>
+        <p className="exposure-status">
+          {search.trim()
+            ? `No player matching "${search.trim()}".`
+            : 'No owned players -- everyone in this list is at 0 shares.'}
+        </p>
       ) : (
         <table className="exposure-table">
           <thead>

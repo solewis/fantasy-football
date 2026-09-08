@@ -6,6 +6,7 @@ import {
   setExposure,
   type ExposureRow,
 } from '../../api/exposure'
+import { fetchRankPool } from '../../api/rankPool'
 import {
   fetchRanksForSet,
   fetchRankSets,
@@ -16,6 +17,8 @@ import {
   PlatformTabs,
   type SupportedPlatform,
 } from '../../components/PlatformTabs'
+import { DeltaChip } from '../../components/DeltaChip'
+import { boundsForSlot } from '../../lib/deltaBuckets'
 import { shareLevel } from '../../lib/exposureLevels'
 import { SEASON } from '../../lib/formats'
 import { PositionTag } from '../players/PositionTag'
@@ -38,6 +41,16 @@ export function ExposurePage() {
   const [rankSets, setRankSets] = useState<RankSetSummary[]>([])
   const [rankSetId, setRankSetId] = useState<number | null>(null)
   const [rows, setRows] = useState<RankRow[]>([])
+  // ADP's rank on the same axis as this list's own scope -- a dense overall
+  // position for an overall list, a dense positional one for a positional
+  // list (see rank_sources.py's _load_adp). Never the raw ADP float: that's
+  // a pick-number estimate, not a list index, and comparing the two is
+  // exactly the "meaningless arithmetic" the rest of the app avoids (see
+  // DraftPlayerPool hiding vs-ADP outside the overall tab for the same
+  // reason).
+  const [adpRankByPlayer, setAdpRankByPlayer] = useState<
+    Map<string, number | null>
+  >(new Map())
   const [exposuresById, setExposuresById] = useState<Map<string, ExposureRow>>(
     new Map(),
   )
@@ -91,13 +104,29 @@ export function ExposurePage() {
     // since the render branches on that first (the "choose a rank list"
     // prompt), so there's no staleness to clear here either.
     if (rankSetId === null) return
+    const selectedRankSet = rankSets.find((s) => s.id === rankSetId)
+    if (!selectedRankSet) return
     let cancelled = false
-    fetchRanksForSet(rankSetId)
-      .then((result) => {
-        if (!cancelled) {
-          setRows(result)
-          setError(null)
-        }
+    Promise.all([
+      fetchRanksForSet(rankSetId),
+      // The list's own format/scope, not a hardcoded default -- ADP is
+      // format-specific, and this is the one axis actually comparable to
+      // this list's own rank numbers.
+      fetchRankPool({
+        platform,
+        season: SEASON,
+        format: selectedRankSet.format,
+        scope: selectedRankSet.scope,
+        sourceRefs: ['adp'],
+      }),
+    ])
+      .then(([rankRows, pool]) => {
+        if (cancelled) return
+        setRows(rankRows)
+        setAdpRankByPlayer(
+          new Map(pool.players.map((p) => [p.platform_player_id, p.ranks.adp])),
+        )
+        setError(null)
       })
       .catch((err: unknown) => {
         if (!cancelled)
@@ -111,7 +140,7 @@ export function ExposurePage() {
     return () => {
       cancelled = true
     }
-  }, [rankSetId])
+  }, [rankSetId, rankSets, platform])
 
   const maxShares = Math.max(
     0,
@@ -231,6 +260,10 @@ export function ExposurePage() {
           <thead>
             <tr>
               <th>Rk</th>
+              <th>ADP</th>
+              <th title="How your rank compares to ADP on the same axis as this list -- red means you have them ranked ahead of ADP (high on them); blue means you have them ranked behind ADP.">
+                vs ADP
+              </th>
               <th>Name</th>
               <th>Team</th>
               <th>Shares</th>
@@ -252,9 +285,24 @@ export function ExposurePage() {
                 rawParsed >= 0
                   ? rawParsed
                   : shares
+              const adpRank =
+                adpRankByPlayer.get(row.platform_player_id) ?? null
+              const bounds = boundsForSlot(row.rank)
               return (
                 <tr key={row.platform_player_id} data-share-level={level}>
                   <td className="exposure-rank">{row.rank}</td>
+                  <td className="exposure-adp">
+                    {row.adp !== null ? row.adp.toFixed(1) : '—'}
+                  </td>
+                  <td>
+                    <DeltaChip
+                      sourceRank={adpRank}
+                      slot={row.rank}
+                      bounds={bounds}
+                      sourceLabel="ADP"
+                      slotLabel={`your #${row.rank}`}
+                    />
+                  </td>
                   <td>
                     <PositionTag position={row.position} />
                     <span className="player-name">{row.name}</span>

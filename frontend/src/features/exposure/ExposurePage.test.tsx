@@ -72,15 +72,23 @@ function exposureRow(
   }
 }
 
+// ADP's dense rank for each player, on whatever axis the request asked for
+// -- defaults match RANKS' own rank order (ADP agrees with you) so tests
+// that don't care about the vs-ADP column see a neutral "0" chip rather
+// than an arbitrary one.
+const DEFAULT_ADP_RANKS: Record<string, number | null> = { '1': 1, '2': 2 }
+
 function mockFetch({
   rankSets = RANK_SETS,
   ranksBySetId = { 1: RANKS },
   exposures = [],
+  adpRanks = DEFAULT_ADP_RANKS,
   postResponse,
 }: {
   rankSets?: unknown[]
   ranksBySetId?: Record<number, unknown[]>
   exposures?: unknown[]
+  adpRanks?: Record<string, number | null>
   postResponse?: unknown
 } = {}) {
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
@@ -121,6 +129,30 @@ function mockFetch({
     if (setRanksMatch) {
       const id = Number(setRanksMatch[1])
       return Promise.resolve(jsonResponse(ranksBySetId[id] ?? []))
+    }
+    if (pathname === '/rank-pool') {
+      return Promise.resolve(
+        jsonResponse({
+          scope: 'overall',
+          sources: [
+            {
+              ref: 'adp',
+              label: 'ADP',
+              kind: 'adp',
+              depth: 2,
+              unresolved_count: 0,
+            },
+          ],
+          players: RANKS.map((r) => ({
+            platform_player_id: r.platform_player_id,
+            name: r.name,
+            position: r.position,
+            team: r.team,
+            adp: r.adp,
+            ranks: { adp: adpRanks[r.platform_player_id] ?? null },
+          })),
+        }),
+      )
     }
     return Promise.resolve(jsonResponse([]))
   })
@@ -390,6 +422,63 @@ describe('ExposurePage', () => {
     // Typed 5, then +1 -- must save 6, not silently discard the typed 5 in
     // favour of the last-saved value (0) and save 1 instead.
     expect(body.shares).toBe(6)
+  })
+
+  it('shows the raw ADP number as its own column', async () => {
+    mockFetch({ exposures: [] })
+    render(<ExposurePage />)
+    await chooseRankList()
+    await screen.findByText('Garrett Wilson')
+
+    expect(screen.getByText('22.0')).toBeInTheDocument()
+    expect(screen.getByText('3.0')).toBeInTheDocument()
+  })
+
+  it("shows how far ahead of or behind ADP each player's rank is", async () => {
+    // ADP's dense rank for Garrett Wilson is 3 (worse than your #1) --
+    // you're ahead of ADP on him by 2 spots.
+    mockFetch({ exposures: [], adpRanks: { '1': 3, '2': 2 } })
+    render(<ExposurePage />)
+    await chooseRankList()
+    await screen.findByText('Garrett Wilson')
+
+    expect(screen.getByText('3 (+2)')).toBeInTheDocument()
+    // Bijan Robinson: ADP dense rank 2 equals your #2 -- no gap.
+    expect(screen.getByText('2 (0)')).toBeInTheDocument()
+  })
+
+  it('shows a missing chip when a player in the list has no ADP', async () => {
+    mockFetch({ exposures: [], adpRanks: { '1': null, '2': 2 } })
+    render(<ExposurePage />)
+    await chooseRankList()
+    await screen.findByText('Garrett Wilson')
+
+    const rows = screen.getAllByRole('row').slice(1)
+    const wilsonRow = rows.find((r) =>
+      r.textContent?.includes('Garrett Wilson'),
+    )
+    expect(wilsonRow?.querySelector('[data-missing="true"]')).not.toBeNull()
+  })
+
+  it("fetches ADP scoped to the chosen rank list's own format and scope", async () => {
+    const fetchMock = mockFetch({ exposures: [] })
+    render(<ExposurePage />)
+    await chooseRankList()
+    await screen.findByText('Garrett Wilson')
+
+    await waitFor(() => {
+      const poolCall = fetchMock.mock.calls.find(([url]) =>
+        (url as string).includes('/rank-pool'),
+      )
+      expect(poolCall).toBeDefined()
+    })
+    const poolCall = fetchMock.mock.calls.find(([url]) =>
+      (url as string).includes('/rank-pool'),
+    )
+    const url = new URL(poolCall![0] as string)
+    expect(url.searchParams.get('format')).toBe('half_ppr')
+    expect(url.searchParams.get('scope')).toBe('overall')
+    expect(url.searchParams.getAll('source_ref')).toEqual(['adp'])
   })
 
   it('filters visible rows by name', async () => {

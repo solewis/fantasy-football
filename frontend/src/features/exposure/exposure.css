@@ -54,7 +54,8 @@
   font-weight: 600;
 }
 
-.exposure-rank {
+.exposure-rank,
+.exposure-adp {
   font-variant-numeric: tabular-nums;
   color: var(--text-muted, #898781);
 }
@@ -88,9 +89,11 @@
   color: #fff;
 }
 
-/* Position tags carry their own colour regardless of row highlight -- only
-   the rank number and team text should pick up the row's ink override. */
-.exposure-table tr[data-share-level] .exposure-rank {
+/* Position tags and delta chips carry their own colour regardless of row
+   highlight -- only the rank number, ADP number and team text should pick
+   up the row's ink override. */
+.exposure-table tr[data-share-level] .exposure-rank,
+.exposure-table tr[data-share-level] .exposure-adp {
   color: inherit;
   opacity: 0.75;
 }

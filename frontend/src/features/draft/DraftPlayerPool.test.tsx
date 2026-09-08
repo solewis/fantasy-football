@@ -939,3 +939,104 @@ describe('sorting by ADP', () => {
     )
   })
 })
+
+describe('auto-scroll on tab switch', () => {
+  function rectFor(top: number, height = 0) {
+    return {
+      top,
+      height,
+      bottom: top + height,
+      left: 0,
+      right: 0,
+      width: 0,
+      x: 0,
+      y: top,
+      toJSON() {
+        return this
+      },
+    } as DOMRect
+  }
+
+  it('scrolls the wrapper so the first available (non-drafted) player is visible, not just row 0', async () => {
+    // Bijan (rank 1) is drafted; Chase (rank 2) is the first player you
+    // could actually take. A leftover scroll position from a different tab
+    // must not leave the list looking like a wall of drafted names.
+    mockFetch({ ranks: savedRanks })
+    render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set(['2'])}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText("Ja'Marr Chase")
+
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.tagName === 'THEAD') return rectFor(0, 40)
+        if (this.className === 'draft-pool-table-wrapper') return rectFor(50)
+        if (
+          this.tagName === 'TR' &&
+          this.textContent?.includes("Ja'Marr Chase")
+        )
+          return rectFor(300)
+        return rectFor(0)
+      })
+    const wrapper = document.querySelector(
+      '.draft-pool-table-wrapper',
+    ) as HTMLDivElement
+    wrapper.scrollTop = 0
+
+    fireEvent.click(screen.getByRole('tab', { name: 'WR' }))
+
+    // 300 (row) - 50 (wrapper) - 40 (sticky header) = 210
+    expect(wrapper.scrollTop).toBe(210)
+    rectSpy.mockRestore()
+  })
+
+  it('does not re-scroll just because a pick landed on the same tab', async () => {
+    mockFetch({ ranks: savedRanks })
+    const { rerender } = render(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set()}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+    await screen.findByText('Bijan Robinson')
+
+    const wrapper = document.querySelector(
+      '.draft-pool-table-wrapper',
+    ) as HTMLDivElement
+    wrapper.scrollTop = 123
+
+    // Someone else drafting Chase changes firstAvailableId within the same
+    // tab (ALL) -- position itself hasn't changed, so a scroll here would
+    // yank the view out from under someone still browsing this tab.
+    rerender(
+      <DraftPlayerPool
+        format="half_ppr"
+        platform="sleeper"
+        nextPickNumber={20}
+        draftedIds={new Set(['3'])}
+        queuedIds={new Set()}
+        canDraft={true}
+        onDraft={vi.fn()}
+        onQueue={vi.fn()}
+      />,
+    )
+
+    expect(wrapper.scrollTop).toBe(123)
+  })
+})

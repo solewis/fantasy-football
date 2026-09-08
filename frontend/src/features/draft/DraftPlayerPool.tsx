@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 
 import { fetchDraftPools, type DraftPools } from '../../lib/fetchRankedPlayers'
 import {
@@ -134,6 +134,34 @@ export function DraftPlayerPool({
       ? pools?.overallSourceName
       : (pools?.positionalSourceNames[position as BuildPosition] ?? null)
 
+  // Drafted players stay visible (see above), so "the top of the list" and
+  // "the first player you could actually take" often aren't the same row --
+  // switching tabs with a leftover scroll position from a different position
+  // could land on a wall of drafted names. Scrolls to whichever row is first
+  // available in the *current* sort/filter, not just row 0.
+  const firstAvailableId =
+    rows.find((row) => !draftedIds.has(row.platform_player_id))
+      ?.platform_player_id ?? null
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const firstAvailableRowRef = useRef<HTMLTableRowElement | null>(null)
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    const row = firstAvailableRowRef.current
+    if (!wrapper || !row) return
+    const headerHeight =
+      wrapper.querySelector('thead')?.getBoundingClientRect().height ?? 0
+    const delta =
+      row.getBoundingClientRect().top -
+      wrapper.getBoundingClientRect().top -
+      headerHeight
+    wrapper.scrollTop = Math.max(0, wrapper.scrollTop + delta)
+    // Deliberately keyed on position alone -- a pick landing (which changes
+    // firstAvailableId within the same tab) must not yank the scroll
+    // position out from under someone still browsing this tab.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position])
+
   return (
     <div className="draft-pool">
       <div className="draft-pool-toolbar">
@@ -186,7 +214,7 @@ export function DraftPlayerPool({
           )
         ))}
 
-      <div className="draft-pool-table-wrapper">
+      <div className="draft-pool-table-wrapper" ref={wrapperRef}>
         {loading && pools === null ? (
           <p className="draft-pool-status">Loading…</p>
         ) : error ? (
@@ -265,6 +293,11 @@ export function DraftPlayerPool({
                       </tr>
                     )}
                     <tr
+                      ref={
+                        row.platform_player_id === firstAvailableId
+                          ? firstAvailableRowRef
+                          : undefined
+                      }
                       className={[
                         drafted ? 'drafted' : '',
                         row.flag ? `flag-${row.flag}` : '',

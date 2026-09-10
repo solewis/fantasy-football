@@ -32,10 +32,10 @@ export interface RankSetSummary {
   season: string
   format: string
   scope: RankSetScope
-  /** Meaningful only for a positional scope: with multiple named lists now
-   * allowed per position, this is the one the overall builder and the draft
-   * room actually use. Always false for an overall set -- there's nothing to
-   * disambiguate. */
+  /** With multiple named lists now allowed per scope, this is the one that
+   * gets used automatically -- by the overall builder and draft room for a
+   * positional scope, and by an ad-hoc draft with no League to assign a
+   * rank_set_id from for the overall scope. */
   is_active: boolean
   player_count: number
 }

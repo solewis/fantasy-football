@@ -87,6 +87,7 @@ function mockBackend({
         season: body?.season as string,
         format: body?.format as string,
         scope: 'overall',
+        is_active: rankSets.length === 0,
         player_count: body?.seed_from_adp ? 250 : 0,
       }
       rankSets = [...rankSets, created]

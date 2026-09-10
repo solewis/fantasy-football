@@ -29,17 +29,13 @@ def upgrade() -> None:
         sa.Column("shares", sa.Integer(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "platform", "season", "platform_player_id", name="uq_player_exposure"
-        ),
+        sa.UniqueConstraint("platform", "season", "platform_player_id", name="uq_player_exposure"),
     )
     with op.batch_alter_table("player_exposures", schema=None) as batch_op:
         batch_op.create_index(
             batch_op.f("ix_player_exposures_platform"), ["platform"], unique=False
         )
-        batch_op.create_index(
-            batch_op.f("ix_player_exposures_season"), ["season"], unique=False
-        )
+        batch_op.create_index(batch_op.f("ix_player_exposures_season"), ["season"], unique=False)
         batch_op.create_index(
             batch_op.f("ix_player_exposures_platform_player_id"),
             ["platform_player_id"],

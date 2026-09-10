@@ -1,13 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { AvailableSource } from '../../api/rankPool'
 import { BuildPage } from './BuildPage'
 
 function jsonResponse(body: unknown) {
   return { ok: true, json: () => Promise.resolve(body) }
 }
 
-const SOURCES = [
+const SOURCES: AvailableSource[] = [
   {
     ref: 'adp',
     label: 'ADP',
@@ -83,7 +84,7 @@ function mockBackend(
       platform?: string
       is_active?: boolean
     }[]
-    sources?: typeof SOURCES
+    sources?: AvailableSource[]
     ranksBySetId?: Record<number, unknown[]>
     /** Lets a test simulate the backend rejecting a create, e.g. a duplicate
      * name -- returns this instead of a 200 for POST /rank-sets. */
@@ -864,7 +865,7 @@ describe('multiple positional rank sets per position', () => {
       flag: null,
     },
   ]
-  const POSITIONAL_SOURCES = [
+  const POSITIONAL_SOURCES: AvailableSource[] = [
     ...SOURCES,
     {
       ref: 'rank_set:9',

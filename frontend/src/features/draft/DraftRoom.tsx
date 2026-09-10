@@ -7,17 +7,23 @@ import {
   makePick,
   saveQueue,
   switchToManual,
-  syncSleeperDraft,
+  syncDraft,
   undoLastPick,
   type DraftStatus,
   type QueueRow,
 } from '../../api/draft'
+import { platformDisplayName } from '../../lib/platforms'
 import { DraftBoard } from './DraftBoard'
 import { DraftPlayerPool } from './DraftPlayerPool'
 import { DraftSidePanel } from './DraftSidePanel'
 import './draft.css'
 
-const SYNC_INTERVAL_MS = 5000
+// A mock draft with bots picks about once a second, so 5s made the board
+// feel a long way behind. Each sync is ~100ms against a local backend, so a
+// tighter loop costs little -- and most of the remaining wait is Sleeper's
+// own API lagging behind a just-made pick, not this interval, so tightening
+// it further only lowers the ceiling rather than fixing the real source.
+const SYNC_INTERVAL_MS = 1000
 
 interface DraftRoomProps {
   draftId: number
@@ -42,6 +48,9 @@ export function DraftRoom({
   const [status, setStatus] = useState<DraftStatus | null>(null)
   const [queue, setQueue] = useState<QueueRow[]>([])
   const [error, setError] = useState<string | null>(null)
+  // Proof the live sync is alive. Without it a quiet stretch of the draft and
+  // a broken poller look identical from the outside.
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
   const [confirmingSwitchToManual, setConfirmingSwitchToManual] =
     useState(false)
 
@@ -80,19 +89,31 @@ export function DraftRoom({
   }, [draftId])
 
   useEffect(() => {
-    if (status?.draft.platform !== 'sleeper' || status.is_complete) return
+    if (
+      status?.draft.platform === undefined ||
+      status.draft.platform === 'manual' ||
+      status.is_complete
+    )
+      return
 
+    let inFlight = false
     const interval = setInterval(() => {
-      Promise.all([syncSleeperDraft(draftId), fetchQueue(draftId)])
+      // Skip a tick rather than stacking requests if one is slow -- otherwise
+      // a hiccup queues syncs that all land at once.
+      if (inFlight) return
+      inFlight = true
+      Promise.all([syncDraft(draftId), fetchQueue(draftId)])
         .then(([statusResult, queueResult]) => {
           setStatus(statusResult)
           setQueue(queueResult)
           setError(null)
+          setLastSyncedAt(Date.now())
         })
         .catch((err: unknown) => {
-          setError(
-            err instanceof Error ? err.message : 'Failed to sync from Sleeper',
-          )
+          setError(err instanceof Error ? err.message : 'Failed to sync draft')
+        })
+        .finally(() => {
+          inFlight = false
         })
     }, SYNC_INTERVAL_MS)
 
@@ -198,7 +219,11 @@ export function DraftRoom({
   const myPicks = status.picks.filter(
     (pick) => pick.slot === status.draft.my_slot,
   )
-  const isSleeperSynced = status.draft.platform === 'sleeper'
+  const isLiveSynced = status.draft.platform !== 'manual'
+  // Manual drafts have no player-source platform of their own -- default to
+  // Sleeper's pool, matching the backend's identical fallback in draft.py.
+  const playerPoolPlatform =
+    status.draft.platform === 'manual' ? 'sleeper' : status.draft.platform
 
   return (
     <div className="draft-page">
@@ -206,9 +231,17 @@ export function DraftRoom({
 
       <div className="draft-page-header">
         <div className="draft-page-status-line">
-          {isSleeperSynced && (
-            <span className="draft-page-sleeper-badge">
-              Synced from Sleeper
+          {isLiveSynced && (
+            <span
+              className="draft-page-sleeper-badge"
+              title={
+                lastSyncedAt
+                  ? `Last checked ${new Date(lastSyncedAt).toLocaleTimeString()}`
+                  : 'Waiting for the first sync'
+              }
+            >
+              <span className="draft-page-sync-dot" aria-hidden="true" />
+              Synced from {platformDisplayName(status.draft.platform)}
             </span>
           )}
           {status.is_complete ? (
@@ -228,7 +261,7 @@ export function DraftRoom({
           )}
         </div>
         <div className="draft-page-header-actions">
-          {isSleeperSynced ? (
+          {isLiveSynced ? (
             confirmingSwitchToManual ? (
               <>
                 <button type="button" onClick={handleSwitchToManual}>
@@ -267,17 +300,19 @@ export function DraftRoom({
       <div className="draft-page-lower">
         <DraftPlayerPool
           format={status.draft.format}
+          platform={playerPoolPlatform}
           rankSetId={status.draft.rank_set_id}
+          nextPickNumber={status.next_pick_number ?? 0}
           draftedIds={draftedIds}
           queuedIds={queuedIds}
-          canDraft={!isSleeperSynced}
+          canDraft={!isLiveSynced}
           onDraft={handleDraftPlayer}
           onQueue={handleAddToQueue}
         />
         <DraftSidePanel
           queue={queue}
           myPicks={myPicks}
-          canDraft={!isSleeperSynced}
+          canDraft={!isLiveSynced}
           rosterPositions={status.draft.roster_positions ?? undefined}
           onReorderQueue={handleReorderQueue}
           onRemoveFromQueue={handleRemoveFromQueue}

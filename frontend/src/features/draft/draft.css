@@ -78,9 +78,15 @@
 .draft-board-wrapper {
   border: 1px solid var(--border);
   border-radius: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   width: 100%;
   box-sizing: border-box;
+  /* The board used to run the full 15 rounds down the page, pushing the player
+     list below the fold -- the two things you need at once. It scrolls inside
+     itself now. */
+  max-height: 46vh;
+  overflow: auto;
+  margin-bottom: 10px;
 }
 
 .draft-board {
@@ -92,27 +98,115 @@
 .draft-board th,
 .draft-board td {
   border: 1px solid var(--border);
-  padding: 14px 8px;
-  font-size: 12px;
+  padding: 3px 6px;
+  font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Header stays put while the board scrolls under it. */
 .draft-board th {
-  background: var(--surface-1);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.draft-board-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.draft-board-pick-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.draft-board-pick-top .draft-board-player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draft-board-pick-no {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.draft-board-player-meta {
+  color: var(--text-muted);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Position colour on the cell -- what makes a board scannable without reading
+   any of it. Solid fills with black ink; the first version used a 16% tint of
+   each hue on the dark surface, which read as mud.
+
+   These exact values were chosen by the person who has to read this board for
+   three hours at a time. For the record, they measure a little tighter than
+   the validator likes -- worst pair around the colourblind floor -- but colour
+   is never carrying identity alone here: every cell also prints its position
+   as text ("RB - DET"), which is the direct-label relief. */
+.draft-board-cell.pos-RB {
+  background: #86c1a8;
+}
+.draft-board-cell.pos-WR {
+  background: #5fa0c7;
+}
+.draft-board-cell.pos-TE {
+  background: #c38f57;
+}
+.draft-board-cell.pos-QB {
+  background: #b46484;
+}
+.draft-board-cell.pos-K,
+.draft-board-cell.pos-DEF {
+  background: #9a9aa8;
+}
+
+.draft-board-cell[class*='pos-'] {
+  color: #000;
+}
+
+.draft-board-cell[class*='pos-'] .draft-board-player-meta,
+.draft-board-cell[class*='pos-'] .draft-board-pick-no {
+  color: #000;
+  opacity: 0.65;
+}
+
+/* Picks not yet made. */
+.draft-board-cell:not([class*='pos-']) {
+  background: #22283b;
+}
+
+/* The default muted ink only manages 4.1:1 on that fill; this clears 4.5. */
+.draft-board-cell:not([class*='pos-']) .draft-board-pick-label {
+  color: #9a988f;
+}
+
+/* An empty future pick needs to hold its place, not a full row's worth of it. */
+.draft-board-cell:has(.draft-board-pick-label) {
+  padding: 2px 6px;
+}
+
+.draft-board th {
+  background: var(--surface-2, #1e1e1c);
   color: var(--text-secondary);
   font-weight: 600;
   text-align: left;
-  padding: 6px 8px;
+  padding: 5px 6px;
 }
 
 .draft-board th.my-team {
   color: var(--text-primary);
-}
-
-.draft-board-cell.my-team {
-  background: var(--surface-1);
 }
 
 .draft-board-cell.current {
@@ -122,10 +216,15 @@
 
 .draft-board-pick-label {
   color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
+/* Deliberately sets no colour: the cell owns it, because a filled cell is
+   dark-ink-on-position-colour while an empty one is light ink on navy. Setting
+   it here would win over the cell's inherited value and paint every name white
+   in dark mode, which is exactly what it used to do. */
 .draft-board-player-name {
-  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -169,6 +268,7 @@
 .draft-pool-table th {
   position: sticky;
   top: 0;
+  z-index: 1;
   background: var(--surface-page);
   font-size: 11px;
   text-transform: uppercase;
@@ -179,6 +279,33 @@
 
 .draft-pool-table tbody tr:hover {
   background: var(--surface-1);
+}
+
+/* A clickable column header doubling as a sort toggle -- inherits the th's
+   own type styling rather than looking like a button, with the active column
+   picked out by colour and an arrow rather than a background change (a
+   sticky header repainting on click reads as a glitch). */
+.draft-pool-sort-btn {
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.draft-pool-sort-btn:hover {
+  color: var(--text-primary);
+}
+
+.draft-pool-sort-btn.active {
+  color: var(--text-primary);
+}
+
+.draft-pool-sort-btn.active::after {
+  content: ' ▾';
 }
 
 .draft-pool-actions {
@@ -426,10 +553,11 @@
   color: var(--text-primary);
 }
 
+/* Full bleed on purpose. A draft board is a grid of teams x rounds, and every
+   pixel of width is another team you can see without scrolling sideways --
+   which is the whole reason to have a board rather than a list. */
 .draft-page {
-  padding: 20px;
-  max-width: 1900px;
-  margin: 0 auto;
+  padding: 8px 12px 12px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -439,8 +567,8 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 .draft-page-status-line {
@@ -475,7 +603,8 @@
 
 .draft-page-header-actions button {
   font: inherit;
-  padding: 8px 14px;
+  padding: 5px 12px;
+  font-size: 13px;
   border-radius: 6px;
   border: 1px solid var(--border-strong);
   background: transparent;
@@ -514,4 +643,138 @@
   border: 1px solid #d03b3b;
   color: #d03b3b;
   font-size: 13px;
+}
+
+/* A tier break is its own full-width row rather than a border on the next
+   data row -- a thin border reads as just another row divider when you're
+   scanning fast mid-draft, and a big drop deserves to actually look like one.
+   Matches the builder's own tier-break divider (build.css's
+   .build-tier-break) so a tier looks and reads the same everywhere. */
+.draft-pool-tier-divider td {
+  padding: 3px 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #898781);
+  background: var(--surface-1, #1a1a19);
+  border-bottom: 1px dashed var(--border, #33322f);
+}
+
+.draft-pool-tier-divider.major td {
+  padding: 5px 10px;
+  color: var(--text-secondary, #c3c2b7);
+  font-weight: 600;
+  border-bottom: 3px double var(--text-muted, #898781);
+}
+
+/* Kept in place rather than removed, so a tier's size (and how many of it
+   are gone) is always visible at a glance -- the whole point of asking to
+   see drafted players rather than have them vanish from view. */
+.draft-pool-table tr.drafted {
+  opacity: 0.25;
+}
+
+.draft-pool-table tr.drafted:hover {
+  background: transparent;
+}
+
+.draft-pool-table tr.drafted .player-name {
+  text-decoration: line-through;
+}
+
+.draft-pool-flag {
+  margin-left: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+}
+
+/* Deliberately the same blue/red poles as the builder's delta chips, so
+   "good for me" and "not for me" read the same everywhere in the app. The
+   word is always present, so colour is never the only channel. */
+.draft-pool-flag.target {
+  color: #3987e5;
+}
+
+.draft-pool-flag.fade {
+  color: #e66767;
+}
+
+.draft-pool-table tr.flag-fade .player-name {
+  opacity: 0.65;
+}
+
+/* Everything below your own list. Still draftable -- a hand-built list is
+   usually shorter than a draft is long -- just visibly not yours. */
+.draft-pool-table tr.unranked td {
+  color: var(--text-muted, #898781);
+}
+
+.draft-pool-table tr.unranked-start > td {
+  border-top: 2px solid var(--border-strong, #4a4945);
+}
+
+.draft-pool-unranked-note {
+  margin-left: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #898781);
+}
+
+.draft-pool-list-note {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--text-muted, #898781);
+}
+
+/* A quiet heartbeat on the sync badge. Without it, "nobody has picked yet" and
+   "the poller died" look exactly the same. */
+.draft-page-sync-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: draft-sync-pulse 2s ease-in-out infinite;
+}
+
+@keyframes draft-sync-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draft-page-sync-dot {
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
+.draft-setup-wrapper {
+  padding: 16px 20px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.draft-setup-wrapper > button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
 }

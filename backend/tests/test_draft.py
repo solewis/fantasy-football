@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app import draft
 from app.db import Base
-from app.ingest import sleeper_draft, sleeper_league
+from app.ingest import espn_draft, sleeper_draft, sleeper_league
 from app.models import Draft, DraftPick, DraftQueueEntry, League, PlatformPlayer
 
 
@@ -56,10 +56,12 @@ def make_league(
     roster_positions: list | None = None,
     team_names: dict | None = None,
     rank_set_id: int | None = None,
+    platform: str = "sleeper",
+    platform_league_id: str = "777",
 ) -> League:
     league = League(
-        platform="sleeper",
-        platform_league_id="777",
+        platform=platform,
+        platform_league_id=platform_league_id,
         name="Test League",
         season="2026",
         format=format,
@@ -209,6 +211,29 @@ def test_get_status_for_unknown_draft_returns_none():
     assert draft.get_status(session, 999) is None
 
 
+def test_delete_draft_removes_it_and_its_picks_and_queue():
+    session = make_session()
+    seed_players(session)
+    created = draft.create_draft(
+        session, season="2026", format="half_ppr", num_teams=2, num_rounds=2, my_slot=1
+    )
+    draft.make_pick(session, created.id, "1")
+    draft.replace_queue(session, created.id, ["2"])
+
+    draft.delete_draft(session, created.id)
+
+    assert draft.get_draft(session, created.id) is None
+    assert session.query(DraftPick).filter_by(draft_id=created.id).count() == 0
+    assert session.query(DraftQueueEntry).filter_by(draft_id=created.id).count() == 0
+
+
+def test_delete_draft_raises_when_not_found():
+    session = make_session()
+
+    with pytest.raises(draft.DraftError):
+        draft.delete_draft(session, 999)
+
+
 def test_list_queue_empty_by_default():
     session = make_session()
     seed_players(session)
@@ -303,7 +328,7 @@ def test_sync_sleeper_draft_inserts_new_picks(monkeypatch):
         ],
     )
 
-    status = draft.sync_sleeper_draft(session, created.id)
+    status = draft.sync_draft(session, created.id)
 
     assert [p["platform_player_id"] for p in status["picks"]] == ["1", "2"]
 
@@ -323,8 +348,8 @@ def test_sync_sleeper_draft_is_idempotent(monkeypatch):
         lambda draft_id: [{"pick_no": 1, "player_id": "1"}],
     )
 
-    draft.sync_sleeper_draft(session, created.id)
-    draft.sync_sleeper_draft(session, created.id)
+    draft.sync_draft(session, created.id)
+    draft.sync_draft(session, created.id)
 
     assert session.query(DraftPick).filter_by(draft_id=created.id).count() == 1
 
@@ -345,7 +370,7 @@ def test_sync_sleeper_draft_removes_synced_players_from_queue(monkeypatch):
         lambda draft_id: [{"pick_no": 1, "player_id": "1"}],
     )
 
-    draft.sync_sleeper_draft(session, created.id)
+    draft.sync_draft(session, created.id)
 
     remaining = draft.list_queue(session, created.id)
     assert [r["platform_player_id"] for r in remaining] == ["2"]
@@ -356,7 +381,7 @@ def test_sync_sleeper_draft_rejects_manual_draft():
     created = make_small_draft(session)
 
     with pytest.raises(draft.DraftError):
-        draft.sync_sleeper_draft(session, created.id)
+        draft.sync_draft(session, created.id)
 
 
 def test_make_pick_rejects_on_sleeper_synced_draft(monkeypatch):
@@ -524,9 +549,149 @@ def test_sync_sleeper_draft_refreshes_team_names_once_available(monkeypatch):
     )
     monkeypatch.setattr(sleeper_draft, "fetch_raw_picks", lambda draft_id: [])
 
-    draft.sync_sleeper_draft(session, created.id)
+    draft.sync_draft(session, created.id)
 
     assert session.get(Draft, created.id).team_names == {"1": "My Team", "2": "Rival"}
+
+
+def espn_raw_draft(picks: list[dict] | None = None) -> dict:
+    return {
+        "seasonId": 2026,
+        "settings": {"draftSettings": {"type": "SNAKE"}},
+        "draftDetail": {
+            "picks": picks
+            if picks is not None
+            else [
+                {
+                    "overallPickNumber": 1,
+                    "roundId": 1,
+                    "roundPickNumber": 1,
+                    "teamId": 10,
+                    "playerId": -1,
+                },
+                {
+                    "overallPickNumber": 2,
+                    "roundId": 1,
+                    "roundPickNumber": 2,
+                    "teamId": 3,
+                    "playerId": -1,
+                },
+                {
+                    "overallPickNumber": 3,
+                    "roundId": 2,
+                    "roundPickNumber": 1,
+                    "teamId": 3,
+                    "playerId": -1,
+                },
+                {
+                    "overallPickNumber": 4,
+                    "roundId": 2,
+                    "roundPickNumber": 2,
+                    "teamId": 10,
+                    "playerId": -1,
+                },
+            ],
+        },
+    }
+
+
+def test_create_draft_from_league_dispatches_to_espn(monkeypatch):
+    """A League's own platform picks which ingest module create_draft_from_league
+    goes through -- confirms the dispatch wiring, not espn_draft's parsing
+    logic itself (covered by test_espn_draft_parse.py)."""
+    session = make_session()
+    league = make_league(
+        session,
+        platform="espn",
+        platform_league_id="2026:1963950844",
+        team_names={"10": "My Team", "3": "Rival"},
+    )
+    monkeypatch.setattr(espn_draft, "fetch_raw_draft", lambda platform_draft_id: espn_raw_draft())
+
+    created = draft.create_draft_from_league(session, league.id, my_slot=1)
+
+    assert created.platform == "espn"
+    assert created.platform_draft_id == "2026:1963950844"
+    assert created.num_teams == 2
+    assert created.num_rounds == 2
+    assert created.team_names == {"1": "My Team", "2": "Rival"}
+
+
+def test_create_draft_from_league_rejects_espn_auction_draft(monkeypatch):
+    session = make_session()
+    league = make_league(session, platform="espn", platform_league_id="2026:1963950844")
+    monkeypatch.setattr(
+        espn_draft,
+        "fetch_raw_draft",
+        lambda platform_draft_id: {
+            **espn_raw_draft(),
+            "settings": {"draftSettings": {"type": "AUCTION"}},
+        },
+    )
+
+    with pytest.raises(draft.DraftError, match="snake"):
+        draft.create_draft_from_league(session, league.id, my_slot=1)
+
+
+def test_sync_draft_dispatches_to_espn_and_skips_unpicked_slots(monkeypatch):
+    session = make_session()
+    session.add(
+        PlatformPlayer(
+            platform="espn",
+            platform_player_id="4046",
+            name="Patrick Mahomes",
+            position="QB",
+            team="KC",
+        )
+    )
+    session.commit()
+    league = make_league(session, platform="espn", platform_league_id="2026:1963950844")
+    monkeypatch.setattr(
+        espn_draft, "fetch_raw_draft", lambda platform_draft_id, client=None: espn_raw_draft()
+    )
+    created = draft.create_draft_from_league(session, league.id, my_slot=1)
+
+    monkeypatch.setattr(
+        espn_draft,
+        "fetch_raw_draft",
+        lambda platform_draft_id, client=None: espn_raw_draft(
+            picks=[
+                {
+                    "overallPickNumber": 1,
+                    "roundId": 1,
+                    "roundPickNumber": 1,
+                    "teamId": 10,
+                    "playerId": 4046,
+                },
+                {
+                    "overallPickNumber": 2,
+                    "roundId": 1,
+                    "roundPickNumber": 2,
+                    "teamId": 3,
+                    "playerId": -1,
+                },
+                {
+                    "overallPickNumber": 3,
+                    "roundId": 2,
+                    "roundPickNumber": 1,
+                    "teamId": 3,
+                    "playerId": -1,
+                },
+                {
+                    "overallPickNumber": 4,
+                    "roundId": 2,
+                    "roundPickNumber": 2,
+                    "teamId": 10,
+                    "playerId": -1,
+                },
+            ]
+        ),
+    )
+
+    status = draft.sync_draft(session, created.id)
+
+    assert [p["pick_number"] for p in status["picks"]] == [1]
+    assert status["picks"][0]["platform_player_id"] == "4046"
 
 
 def test_get_status_includes_rank_set_and_roster_positions_from_league(monkeypatch):
@@ -618,3 +783,42 @@ def test_list_drafts_marks_a_full_draft_complete():
     assert row["is_complete"] is True
     assert row["next_pick_number"] is None
     assert row["current_round"] is None
+
+
+def test_list_picks_resolves_against_a_non_sleeper_draft_platform():
+    """Regression test: list_picks/list_queue used to hardcode a join against
+    PlatformPlayer.platform == "sleeper" regardless of the draft's own
+    platform. A second platform's live-synced picks would silently disappear
+    from the board with no error (the inner join just matches nothing).
+    """
+    session = make_session()
+    session.add(
+        PlatformPlayer(
+            platform="espn",
+            platform_player_id="9001",
+            name="Test Player",
+            position="RB",
+            team="XXX",
+        )
+    )
+    espn_draft = Draft(
+        platform="espn",
+        platform_draft_id="league-key-123",
+        season="2026",
+        format="half_ppr",
+        num_teams=10,
+        num_rounds=14,
+        my_slot=1,
+        created_at=datetime.now(UTC),
+    )
+    session.add(espn_draft)
+    session.commit()
+    session.add(DraftPick(draft_id=espn_draft.id, pick_number=1, platform_player_id="9001"))
+    session.add(DraftQueueEntry(draft_id=espn_draft.id, platform_player_id="9001", order=1))
+    session.commit()
+
+    picks = draft.list_picks(session, espn_draft.id)
+    queue = draft.list_queue(session, espn_draft.id)
+
+    assert [p["name"] for p in picks] == ["Test Player"]
+    assert [q["name"] for q in queue] == ["Test Player"]

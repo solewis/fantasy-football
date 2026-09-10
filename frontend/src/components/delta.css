@@ -1,0 +1,149 @@
+/* Diverging scale for per-source rank deltas. delta = source_rank - slot.
+ *   delta < 0  source is HIGHER on them than this slot  -> blue  (value)
+ *   delta = 0  source agrees                            -> gray  (neutral)
+ *   delta > 0  source has them LOWER than this slot     -> red   (behind)
+ *
+ * blue <-> red with a gray midpoint is the documented diverging pair.
+ *
+ * Intensity runs light to dark in BOTH themes: level 1 is a barely-there tint,
+ * level 5 is saturated. An earlier version inverted the dark-mode ramp on the
+ * theory that lighter = more prominent on a dark surface, which made +1 darker
+ * than +9 and read as noise rather than a scale. Magnitude should look like
+ * magnitude regardless of theme.
+ *
+ * Ink flips to white at level 4, where black stops clearing 4.5:1. Every
+ * step/ink pair is >= 4.9:1; the palest are 14-15:1.
+ */
+.delta-chip[data-arm='behind'][data-level='1'] {
+  background: #f6c9c6;
+  color: #000;
+}
+.delta-chip[data-arm='behind'][data-level='2'] {
+  background: #eda29e;
+  color: #000;
+}
+.delta-chip[data-arm='behind'][data-level='3'] {
+  background: #dd6f6a;
+  color: #000;
+}
+.delta-chip[data-arm='behind'][data-level='4'] {
+  background: #c0403c;
+  color: #fff;
+}
+.delta-chip[data-arm='behind'][data-level='5'] {
+  background: #8f2420;
+  color: #fff;
+}
+
+.delta-chip[data-arm='value'][data-level='1'] {
+  background: #c6dcf9;
+  color: #000;
+}
+.delta-chip[data-arm='value'][data-level='2'] {
+  background: #9cc0f2;
+  color: #000;
+}
+.delta-chip[data-arm='value'][data-level='3'] {
+  background: #6a9ae4;
+  color: #000;
+}
+.delta-chip[data-arm='value'][data-level='4'] {
+  background: #3a6fc4;
+  color: #fff;
+}
+.delta-chip[data-arm='value'][data-level='5'] {
+  background: #1e4a8c;
+  color: #fff;
+}
+
+/* Agreement: the neutral midpoint of the diverging pair. */
+.delta-chip[data-arm='none'] {
+  background: #f0efec;
+  color: #52514e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .delta-chip[data-arm='none'] {
+    background: #383835;
+    color: #c3c2b7;
+  }
+}
+
+:root[data-theme='dark'] .delta-chip[data-arm='none'] {
+  background: #383835;
+  color: #c3c2b7;
+}
+
+/* No opinion at all -- deliberately unlike agreement, which is a real signal. */
+.delta-chip[data-missing='true'] {
+  background: transparent;
+  color: var(--text-muted, #898781);
+  border-color: var(--border, #33322f);
+  border-style: dashed;
+}
+
+.delta-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Wide enough for "123 (-12)" without jagged widths across a row now that
+     the chip shows the source's actual rank, not just the delta. */
+  min-width: 56px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  /* 2px surface gap between adjacent marks */
+  margin-right: 2px;
+}
+
+/* The OS has overridden backgrounds here, so border style carries the arm.
+   The number is already in the text. */
+@media (forced-colors: active) {
+  .delta-chip {
+    background: transparent !important;
+    color: CanvasText !important;
+    border: 1px solid CanvasText;
+  }
+  .delta-chip[data-arm='value'] {
+    border-style: double;
+  }
+  .delta-chip[data-arm='behind'] {
+    border-style: dashed;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.delta-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  font-size: 12px;
+  color: var(--text-muted, #898781);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

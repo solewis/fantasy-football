@@ -19,6 +19,9 @@ const adpPlayers: PlayerRow[] = [
     position: 'WR',
     team: 'CIN',
     adp: 1.0,
+    tier: null,
+    break_after: null,
+    flag: null,
   },
   {
     rank: 2,
@@ -27,6 +30,9 @@ const adpPlayers: PlayerRow[] = [
     position: 'RB',
     team: 'ATL',
     adp: 2.0,
+    tier: null,
+    break_after: null,
+    flag: null,
   },
 ]
 
@@ -38,6 +44,9 @@ const savedRanks: RankRow[] = [
     position: 'RB',
     team: 'ATL',
     adp: 2.0,
+    tier: null,
+    break_after: null,
+    flag: null,
   },
   {
     rank: 2,
@@ -46,6 +55,9 @@ const savedRanks: RankRow[] = [
     position: 'WR',
     team: 'CIN',
     adp: 1.0,
+    tier: null,
+    break_after: null,
+    flag: null,
   },
 ]
 
@@ -92,6 +104,9 @@ function mockBackend({
       position: player.position,
       team: player.team,
       adp: player.adp,
+      tier: null,
+      break_after: null,
+      flag: null,
     }
   }
 
@@ -110,7 +125,8 @@ function mockBackend({
     }
     if (ranksMatch && method === 'PUT') {
       const id = Number(ranksMatch[1])
-      const ids = (body?.platform_player_ids as string[]) ?? []
+      const entries = (body?.entries as { platform_player_id: string }[]) ?? []
+      const ids = entries.map((e) => e.platform_player_id)
       ranksById[id] = ids.map((pid, i) => {
         const player = players.find((p) => p.platform_player_id === pid)
         return player
@@ -122,6 +138,9 @@ function mockBackend({
               position: null,
               team: null,
               adp: null,
+              tier: null,
+              break_after: null,
+              flag: null,
             }
       })
       const set = sets.find((s) => s.id === id)
@@ -150,6 +169,8 @@ function mockBackend({
         platform: (body?.platform as string) ?? 'sleeper',
         season: body?.season as string,
         format: body?.format as string,
+        scope: (body?.scope as RankSetSummary['scope']) ?? 'overall',
+        is_active: sets.length === 0,
         player_count: 0,
       }
       sets.push(newSet)
@@ -185,7 +206,7 @@ describe('RankingsPage', () => {
   it('falls back to ADP order when no rank sets exist yet', async () => {
     mockBackend({ initialSets: [] })
 
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
 
     expect(await screen.findByText("Ja'Marr Chase")).toBeInTheDocument()
     expect(screen.getByText('Bijan Robinson')).toBeInTheDocument()
@@ -199,6 +220,35 @@ describe('RankingsPage', () => {
     expect(within(rows[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
   })
 
+  it('refetches when the platform prop changes', async () => {
+    // The platform tabs themselves live in RankingsSection now; what matters
+    // here is that this page reacts to the prop.
+    const fetchMock = mockBackend({ initialSets: [] })
+
+    const { rerender } = render(
+      <RankingsPage platform="sleeper" format="half_ppr" />,
+    )
+    await screen.findByText("Ja'Marr Chase")
+
+    rerender(<RankingsPage platform="espn" format="half_ppr" />)
+
+    await waitFor(() => {
+      const rankSetsCalls = fetchMock.mock.calls
+        .map(([url]) => new URL(url as string))
+        .filter((u) => u.pathname === '/rank-sets')
+      expect(
+        rankSetsCalls.some((u) => u.searchParams.get('platform') === 'espn'),
+      ).toBe(true)
+    })
+    await waitFor(() => {
+      const lastPlayersCall = fetchMock.mock.calls
+        .map(([url]) => new URL(url as string))
+        .filter((u) => u.pathname === '/players')
+        .at(-1)
+      expect(lastPlayersCall?.searchParams.get('platform')).toBe('espn')
+    })
+  })
+
   it('uses a rank set’s saved order when it has entries, without the ADP fallback note', async () => {
     mockBackend({
       initialSets: [
@@ -208,13 +258,15 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
 
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
 
     const rows = await screen.findAllByRole('row')
     expect(within(rows[1]).getByText('Bijan Robinson')).toBeInTheDocument()
@@ -233,12 +285,14 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     const rowsBefore = screen.getAllByRole('row')
@@ -275,12 +329,14 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     const rowsBefore = screen.getAllByRole('row')
@@ -311,12 +367,14 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     const rowsBefore = screen.getAllByRole('row')
@@ -340,12 +398,14 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     fireEvent.click(
@@ -366,12 +426,14 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     fireEvent.click(
@@ -392,12 +454,14 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     expect(
@@ -423,13 +487,15 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
       players: adpPlayers,
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     fireEvent.click(screen.getByRole('button', { name: 'Load from ADP' }))
@@ -441,6 +507,112 @@ describe('RankingsPage', () => {
     expect(within(rows[1]).getByText("Ja'Marr Chase")).toBeInTheDocument()
   })
 
+  it('Load from ADP on a positional set only requests that position', async () => {
+    // Regression: this used to fetch every position regardless of which set
+    // was open, so clicking "Load from ADP" on a QB-scoped set replaced its
+    // saved quarterbacks with hundreds of players across every position --
+    // indistinguishable, from the outside, from the whole list being deleted.
+    const fetchMock = mockBackend({
+      initialSets: [
+        {
+          id: 9,
+          name: 'My QBs',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          scope: 'QB',
+          is_active: true,
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 9: savedRanks },
+      players: adpPlayers,
+    })
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load from ADP' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Starting from ADP order/)).toBeInTheDocument()
+    })
+    const playersCall = fetchMock.mock.calls.find(
+      ([url]) => new URL(url as string).pathname === '/players',
+    )
+    expect(playersCall).toBeDefined()
+    const [url] = playersCall as [string]
+    expect(new URL(url).searchParams.get('position')).toBe('QB')
+  })
+
+  it('Load from ADP on the overall set requests every position', async () => {
+    const fetchMock = mockBackend({
+      initialSets: [
+        {
+          id: 1,
+          name: 'Main',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
+          player_count: 2,
+        },
+      ],
+      ranksBySetId: { 1: savedRanks },
+      players: adpPlayers,
+    })
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
+    await screen.findByText('Bijan Robinson')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load from ADP' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Starting from ADP order/)).toBeInTheDocument()
+    })
+    const playersCall = fetchMock.mock.calls.find(
+      ([url]) => new URL(url as string).pathname === '/players',
+    )
+    expect(playersCall).toBeDefined()
+    const [url] = playersCall as [string]
+    expect(new URL(url).searchParams.get('position')).toBeNull()
+  })
+
+  it('an empty positional set falls back to ADP filtered by that position, not every position', async () => {
+    // Same bug, the other trigger: a freshly created (still-empty) positional
+    // set auto-falls back to an ADP preview, and that fallback needs the same
+    // filter -- otherwise opening a brand-new "My QBs" for the first time
+    // would preview it full of running backs and wide receivers.
+    const fetchMock = mockBackend({
+      initialSets: [
+        {
+          id: 9,
+          name: 'My QBs',
+          platform: 'sleeper',
+          season: '2026',
+          format: 'half_ppr',
+          scope: 'QB',
+          is_active: true,
+          player_count: 0,
+        },
+      ],
+      ranksBySetId: { 9: [] },
+      players: adpPlayers,
+    })
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
+
+    await waitFor(() => {
+      const playersCall = fetchMock.mock.calls.find(
+        ([url]) => new URL(url as string).pathname === '/players',
+      )
+      expect(playersCall).toBeDefined()
+    })
+    const playersCall = fetchMock.mock.calls.find(
+      ([url]) => new URL(url as string).pathname === '/players',
+    )
+    const [url] = playersCall as [string]
+    expect(new URL(url).searchParams.get('position')).toBe('QB')
+  })
+
   it('Save Ranks sends the current order to the selected rank set', async () => {
     const fetchMock = mockBackend({
       initialSets: [
@@ -450,12 +622,14 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     fireEvent.click(screen.getByRole('button', { name: 'Save Ranks' }))
@@ -468,14 +642,14 @@ describe('RankingsPage', () => {
     const [url, init] = putCall as [string, RequestInit]
     expect(url).toContain('/rank-sets/1/ranks')
     const body = JSON.parse(init.body as string) as {
-      platform_player_ids: string[]
+      entries: { platform_player_id: string; tier: number | null }[]
     }
-    expect(body.platform_player_ids).toEqual(['2', '3'])
+    expect(body.entries.map((e) => e.platform_player_id)).toEqual(['2', '3'])
   })
 
   it('creating a rank set seeds it from ADP and selects it', async () => {
     mockBackend({ initialSets: [], players: adpPlayers })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText(/No rank sets for this format yet/)
 
     fireEvent.click(screen.getByRole('button', { name: '+ New Rank Set' }))
@@ -498,12 +672,14 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
@@ -526,12 +702,14 @@ describe('RankingsPage', () => {
           platform: 'sleeper',
           season: '2026',
           format: 'half_ppr',
+          scope: 'overall',
+          is_active: true,
           player_count: 2,
         },
       ],
       ranksBySetId: { 1: savedRanks },
     })
-    render(<RankingsPage />)
+    render(<RankingsPage platform="sleeper" format="half_ppr" />)
     await screen.findByText('Bijan Robinson')
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))

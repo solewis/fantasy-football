@@ -101,6 +101,9 @@ function mockBackend({
         jsonResponse(draftStatusFor(league, body?.my_slot as number)),
       )
     }
+    if (pathname === '/drafts/5' && method === 'DELETE') {
+      return Promise.resolve(noContentResponse())
+    }
     if (pathname === '/drafts/5') {
       return Promise.resolve(jsonResponse(draftStatusFor(league, 3)))
     }
@@ -176,6 +179,25 @@ describe('LeagueDetailPage', () => {
     })
   })
 
+  it('shows a platform-specific sync label for a non-Sleeper league', () => {
+    const espnLeague: LeagueSummary = { ...baseLeague, platform: 'espn' }
+    mockBackend({ league: espnLeague })
+    render(
+      <LeagueDetailPage
+        league={espnLeague}
+        draft={null}
+        onBack={vi.fn()}
+        onLeagueUpdated={vi.fn()}
+        onLeagueDeleted={vi.fn()}
+        onDraftChanged={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'Sync from ESPN' }),
+    ).toBeInTheDocument()
+  })
+
   it('deleting a league requires a confirm click', async () => {
     mockBackend()
     const onLeagueDeleted = vi.fn()
@@ -204,6 +226,7 @@ describe('LeagueDetailPage', () => {
     mockBackend()
     const draft: DraftSummary = {
       id: 5,
+      pick_count: 3,
       next_pick_number: 4,
       current_round: 2,
       is_complete: false,
@@ -323,6 +346,7 @@ describe('LeagueDetailPage', () => {
     mockBackend()
     const draft: DraftSummary = {
       id: 5,
+      pick_count: 3,
       next_pick_number: 4,
       current_round: 2,
       is_complete: false,
@@ -343,10 +367,50 @@ describe('LeagueDetailPage', () => {
     expect(screen.queryByLabelText('Your draft slot')).not.toBeInTheDocument()
   })
 
+  it('Start over deletes the existing draft before creating a new one', async () => {
+    const fetchMock = mockBackend()
+    const draft: DraftSummary = {
+      id: 5,
+      pick_count: 3,
+      next_pick_number: 4,
+      current_round: 2,
+      is_complete: false,
+    }
+    render(
+      <LeagueDetailPage
+        league={baseLeague}
+        draft={draft}
+        onBack={vi.fn()}
+        onLeagueUpdated={vi.fn()}
+        onLeagueDeleted={vi.fn()}
+        onDraftChanged={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start over' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm start over?' }))
+
+    await vi.waitFor(() => {
+      const calls = fetchMock.mock.calls.map(([url, init]) => ({
+        pathname: new URL(url as string).pathname,
+        method: (init as RequestInit | undefined)?.method ?? 'GET',
+      }))
+      const deleteIndex = calls.findIndex(
+        (c) => c.pathname === '/drafts/5' && c.method === 'DELETE',
+      )
+      const createIndex = calls.findIndex(
+        (c) => c.pathname === '/drafts/league' && c.method === 'POST',
+      )
+      expect(deleteIndex).toBeGreaterThanOrEqual(0)
+      expect(createIndex).toBeGreaterThan(deleteIndex)
+    })
+  })
+
   it('Resume mounts the board with a back-to-league control', async () => {
     mockBackend()
     const draft: DraftSummary = {
       id: 5,
+      pick_count: 3,
       next_pick_number: 4,
       current_round: 2,
       is_complete: false,

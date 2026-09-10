@@ -6,6 +6,7 @@ import type { DraftListRow, DraftStatus } from '../api/draft'
  * (which reads the real DraftStatus itself once resumed). */
 export interface DraftSummary {
   id: number
+  pick_count: number
   next_pick_number: number | null
   current_round: number | null
   is_complete: boolean
@@ -14,6 +15,7 @@ export interface DraftSummary {
 export function draftSummaryFromStatus(status: DraftStatus): DraftSummary {
   return {
     id: status.draft.id,
+    pick_count: status.picks.length,
     next_pick_number: status.next_pick_number,
     current_round: status.current_round,
     is_complete: status.is_complete,
@@ -26,6 +28,7 @@ export function draftSummaryFromStatus(status: DraftStatus): DraftSummary {
 export function draftSummaryFromListRow(row: DraftListRow): DraftSummary {
   return {
     id: row.id,
+    pick_count: row.pick_count,
     next_pick_number: row.next_pick_number,
     current_round: row.current_round,
     is_complete: row.is_complete,

@@ -61,7 +61,7 @@ function mockBackend({
     if (pathname === '/leagues' && method === 'POST') {
       const created: LeagueSummary = {
         id: 1,
-        platform: 'sleeper',
+        platform: (body?.platform as string) ?? 'sleeper',
         platform_league_id: body?.platform_league_id as string,
         name: lookupResult.name,
         season: lookupResult.season,
@@ -86,6 +86,8 @@ function mockBackend({
         platform: (body?.platform as string) ?? 'sleeper',
         season: body?.season as string,
         format: body?.format as string,
+        scope: 'overall',
+        is_active: rankSets.length === 0,
         player_count: body?.seed_from_adp ? 250 : 0,
       }
       rankSets = [...rankSets, created]
@@ -183,8 +185,60 @@ describe('LeaguesPage', () => {
     const [, init] = postCall as [string, RequestInit]
     const body = JSON.parse(init.body as string) as Record<string, unknown>
     expect(body).toMatchObject({
+      platform: 'sleeper',
       platform_league_id: '999',
       format: 'half_ppr',
+    })
+  })
+
+  it('switching to the ESPN tab changes the id field label and posts platform: espn', async () => {
+    const fetchMock = mockBackend()
+    render(
+      <LeaguesPage
+        leagues={[]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map()}
+        {...noop}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add League' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'ESPN' }))
+
+    expect(screen.getByText('ESPN league ID')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText(/e.g. 1963950844/), {
+      target: { value: '1963950844' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Look Up' }))
+    await screen.findByText('Sunday Funday')
+    fireEvent.click(screen.getByRole('button', { name: 'Add League' }))
+    await vi.waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            (url as string).includes('/leagues') &&
+            (init as RequestInit)?.method === 'POST',
+        ),
+      ).toBe(true)
+    })
+
+    const lookupCall = fetchMock.mock.calls.find(([url]) =>
+      (url as string).includes('/leagues/lookup'),
+    )
+    expect(lookupCall?.[0]).toContain('platform=espn')
+
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        (url as string).includes('/leagues') &&
+        (init as RequestInit)?.method === 'POST',
+    )
+    const [, init] = postCall as [string, RequestInit]
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body).toMatchObject({
+      platform: 'espn',
+      platform_league_id: '1963950844',
     })
   })
 
@@ -239,6 +293,7 @@ describe('LeaguesPage', () => {
   it('shows a draft-in-progress badge for a league with an active draft', () => {
     const draft: DraftSummary = {
       id: 5,
+      pick_count: 3,
       next_pick_number: 4,
       current_round: 2,
       is_complete: false,
@@ -256,6 +311,27 @@ describe('LeaguesPage', () => {
     expect(
       screen.getByText('Draft in progress · Round 2, Pick 4'),
     ).toBeInTheDocument()
+  })
+
+  it('shows a "Ready to draft" badge for a league with a draft but no picks yet', () => {
+    const draft: DraftSummary = {
+      id: 5,
+      pick_count: 0,
+      next_pick_number: 1,
+      current_round: 1,
+      is_complete: false,
+    }
+    render(
+      <LeaguesPage
+        leagues={[sampleLeague]}
+        loading={false}
+        error={null}
+        draftsByLeague={new Map([[sampleLeague.id, draft]])}
+        {...noop}
+      />,
+    )
+
+    expect(screen.getByText('Ready to draft')).toBeInTheDocument()
   })
 
   it('clicking the ad-hoc footer link calls onStartAdHoc', () => {

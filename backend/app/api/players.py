@@ -13,12 +13,21 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 class PlayerRow(BaseModel):
+    """Deliberately shaped to match ranks.py's RankRow, so the frontend can swap
+    an ADP-ordered list in wherever a saved rank list would go. `rank` is a
+    synthesized ADP ordinal; `tier` is always null (ADP has no tiers) and exists
+    only to keep the two shapes interchangeable.
+    """
+
     rank: int
     platform_player_id: str
     name: str
     position: str | None
     team: str | None
     adp: float
+    tier: None = None
+    break_after: None = None
+    flag: None = None
 
 
 @router.get("/players", response_model=list[PlayerRow])

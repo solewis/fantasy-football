@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { createDraftFromLeague } from '../../api/draft'
+import { createDraftFromLeague, deleteDraft } from '../../api/draft'
 import {
   deleteLeague,
   syncLeague,
@@ -12,6 +12,7 @@ import {
   type DraftSummary,
 } from '../../lib/draftSummary'
 import { FORMATS } from '../../lib/formats'
+import { platformDisplayName } from '../../lib/platforms'
 import { DraftRoom } from '../draft/DraftRoom'
 import { RankSetPicker } from './RankSetPicker'
 import './leagues.css'
@@ -51,6 +52,14 @@ export function LeagueDetailPage({
     setCreatingDraft(true)
     setDraftError(null)
     try {
+      // "Start over" reuses this same flow with an existing draft already in
+      // state -- delete it first so it doesn't linger as an orphaned
+      // duplicate once the new one is created (both would otherwise sit on
+      // the same league_id forever, with only the newest ever surfacing in
+      // the leagues list).
+      if (draft) {
+        await deleteDraft(draft.id)
+      }
       const status = await createDraftFromLeague({
         league_id: league.id,
         my_slot: mySlot,
@@ -145,6 +154,7 @@ export function LeagueDetailPage({
           <RankSetPicker
             season={league.season}
             format={league.format}
+            platform={league.platform}
             value={league.rank_set_id}
             onChange={handleRankSetChange}
           />
@@ -162,7 +172,9 @@ export function LeagueDetailPage({
 
         <div className="league-card-actions">
           <button type="button" onClick={handleSync} disabled={syncing}>
-            {syncing ? 'Syncing…' : 'Sync from Sleeper'}
+            {syncing
+              ? 'Syncing…'
+              : `Sync from ${platformDisplayName(league.platform)}`}
           </button>
           {confirmingDelete ? (
             <>

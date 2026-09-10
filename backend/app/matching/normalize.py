@@ -3,7 +3,7 @@ import unicodedata
 
 # Suffixes/labels that shouldn't affect matching: generational suffixes on
 # player names, and defense/special-teams labels on DST entries.
-_STRIP_TOKENS = {"jr", "sr", "ii", "iii", "iv", "v", "dst", "def"}
+STRIP_TOKENS = {"jr", "sr", "ii", "iii", "iv", "v", "dst", "def"}
 
 
 def normalize_name(name: str) -> str:
@@ -20,5 +20,5 @@ def normalize_name(name: str) -> str:
     text = re.sub(r"[.']", "", text)
     text = re.sub(r"[^a-z0-9\s]", " ", text)
 
-    tokens = [token for token in text.split() if token not in _STRIP_TOKENS]
+    tokens = [token for token in text.split() if token not in STRIP_TOKENS]
     return " ".join(tokens)

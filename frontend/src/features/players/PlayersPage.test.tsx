@@ -18,6 +18,9 @@ const samplePlayers: PlayerRow[] = [
     position: 'WR',
     team: 'CIN',
     adp: 1.0,
+    tier: null,
+    break_after: null,
+    flag: null,
   },
   {
     rank: 2,
@@ -26,12 +29,16 @@ const samplePlayers: PlayerRow[] = [
     position: 'RB',
     team: 'ATL',
     adp: 2.0,
+    tier: null,
+    break_after: null,
+    flag: null,
   },
 ]
 
 const emptySyncStatus = {
   players: { last_synced_at: null, record_count: 0 },
-  adp: { season: '2026', last_synced_at: null, record_count: 0 },
+  adp: { season: '2026', tier: null, last_synced_at: null, record_count: 0 },
+  espn_players: { last_synced_at: null, record_count: 0 },
 }
 
 /** SyncPanel fetches /sync/status on mount alongside PlayersPage's own /players
@@ -145,5 +152,22 @@ describe('PlayersPage', () => {
     expect(lastPlayersCall).toContain('format=ppr')
     expect(lastPlayersCall).not.toContain('position=')
     expect(lastPlayersCall).not.toContain('search=')
+  })
+
+  it('refetches with the selected platform when the platform tab changes', async () => {
+    const fetchMock = mockFetch({ ok: true, body: samplePlayers })
+    render(<PlayersPage />)
+    await screen.findByText("Ja'Marr Chase")
+
+    fireEvent.click(screen.getByRole('tab', { name: 'ESPN' }))
+
+    await waitFor(() => {
+      expect(playersCallCount(fetchMock)).toBe(2)
+    })
+    const lastPlayersCall = fetchMock.mock.calls
+      .map(([url]) => url as string)
+      .filter((url) => !url.includes('/sync/'))
+      .at(-1)
+    expect(lastPlayersCall).toContain('platform=espn')
   })
 })

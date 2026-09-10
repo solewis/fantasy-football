@@ -1,15 +1,37 @@
+from datetime import UTC, datetime
+
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app import sync_service
 from app.db import Base
-from app.models import AdpEntry, PlatformPlayer, SyncStatus
+from app.models import AdpEntry, League, PlatformPlayer, SyncStatus
 
 
 def make_session() -> Session:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     return Session(engine)
+
+
+def make_espn_league(session: Session, platform_league_id: str = "2026:999") -> League:
+    league = League(
+        platform="espn",
+        platform_league_id=platform_league_id,
+        name="The Denver League",
+        season="2026",
+        format="half_ppr",
+        num_teams=12,
+        roster_positions=["QB"],
+        team_names={},
+        rank_set_id=None,
+        created_at=datetime.now(UTC),
+    )
+    session.add(league)
+    session.commit()
+    session.refresh(league)
+    return league
 
 
 def fake_sleeper_sync(processed_count: int):
@@ -62,6 +84,34 @@ def fake_sleeper_adp_sync(processed_count: int):
                 )
         session.commit()
         return processed_count
+
+    return _sync
+
+
+def fake_espn_players_sync(players_count: int, adp_count: int):
+    def _sync(session: Session, platform_league_id: str, season: str) -> dict:
+        for i in range(players_count):
+            session.add(
+                PlatformPlayer(
+                    platform="espn",
+                    platform_player_id=str(i),
+                    name=f"Player {i}",
+                    position="RB",
+                    team="DEN",
+                )
+            )
+        for i in range(adp_count):
+            session.add(
+                AdpEntry(
+                    platform="espn",
+                    platform_player_id=str(i),
+                    season=season,
+                    format="half_ppr",
+                    adp=float(i),
+                )
+            )
+        session.commit()
+        return {"players_synced": players_count, "adp_synced": adp_count}
 
     return _sync
 
@@ -160,3 +210,60 @@ def test_get_status_does_not_leak_adp_status_across_seasons(monkeypatch):
     status = sync_service.get_status(session, "2025")
 
     assert status["adp"] == {"season": "2025", "last_synced_at": None, "record_count": 0}
+
+
+def test_sync_espn_players_raises_when_no_espn_league_saved():
+    session = make_session()
+
+    with pytest.raises(sync_service.SyncError):
+        sync_service.sync_espn_players(session)
+
+
+def test_sync_espn_players_uses_the_first_saved_league_by_default(monkeypatch):
+    session = make_session()
+    make_espn_league(session)
+    monkeypatch.setattr(sync_service.espn_players, "sync", fake_espn_players_sync(5, 5))
+
+    result = sync_service.sync_espn_players(session)
+
+    assert result["record_count"] == 5
+    assert result["adp_record_count"] == 5
+    assert result["last_synced_at"] is not None
+    assert session.query(SyncStatus).filter_by(sync_type="espn_players", season="2026").count() == 1
+
+
+def test_sync_espn_players_uses_the_specified_league_id(monkeypatch):
+    session = make_session()
+    make_espn_league(session, platform_league_id="2026:111")
+    second = make_espn_league(session, platform_league_id="2026:222")
+    calls = []
+
+    def fake_sync(session, platform_league_id, season):
+        calls.append(platform_league_id)
+        return {"players_synced": 1, "adp_synced": 1}
+
+    monkeypatch.setattr(sync_service.espn_players, "sync", fake_sync)
+
+    sync_service.sync_espn_players(session, league_id=second.id)
+
+    assert calls == ["2026:222"]
+
+
+def test_get_status_reports_espn_players_never_synced_when_nothing_has_run():
+    session = make_session()
+
+    status = sync_service.get_status(session, "2026")
+
+    assert status["espn_players"] == {"last_synced_at": None, "record_count": 0}
+
+
+def test_get_status_reflects_espn_players_live_counts(monkeypatch):
+    session = make_session()
+    make_espn_league(session)
+    monkeypatch.setattr(sync_service.espn_players, "sync", fake_espn_players_sync(6, 3))
+    sync_service.sync_espn_players(session)
+
+    status = sync_service.get_status(session, "2026")
+
+    assert status["espn_players"]["record_count"] == 6
+    assert status["espn_players"]["last_synced_at"] is not None

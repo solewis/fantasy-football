@@ -20,6 +20,7 @@ export interface LeagueSummary {
 }
 
 export interface CreateLeagueParams {
+  platform: string
   platform_league_id: string
   format: string
   rank_set_id?: number | null
@@ -43,10 +44,14 @@ async function parseOrThrow<T>(response: Response, label: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export async function lookupSleeperLeague(
+export async function lookupLeague(
+  platform: string,
   platformLeagueId: string,
 ): Promise<LeagueLookup> {
-  const query = new URLSearchParams({ platform_league_id: platformLeagueId })
+  const query = new URLSearchParams({
+    platform,
+    platform_league_id: platformLeagueId,
+  })
   const response = await fetch(`${API_BASE}/leagues/lookup?${query.toString()}`)
   return parseOrThrow(response, 'Looking up league')
 }

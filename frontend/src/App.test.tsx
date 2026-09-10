@@ -6,6 +6,7 @@ import App from './App'
 const emptySyncStatus = {
   players: { last_synced_at: null, record_count: 0 },
   adp: { season: '2026', last_synced_at: null, record_count: 0 },
+  espn_players: { last_synced_at: null, record_count: 0 },
 }
 
 beforeEach(() => {
@@ -61,6 +62,17 @@ describe('App', () => {
 
     expect(
       await screen.findByPlaceholderText('Find player'),
+    ).toBeInTheDocument()
+  })
+
+  it('switches to the Exposure tab when clicked', async () => {
+    render(<App />)
+    await screen.findByText(/No leagues yet/)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Exposure' }))
+
+    expect(
+      await screen.findByRole('combobox', { name: 'Rank list' }),
     ).toBeInTheDocument()
   })
 })

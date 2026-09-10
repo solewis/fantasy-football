@@ -188,7 +188,7 @@ describe('DraftRoom', () => {
     // pick 1 goes to slot 1; my_slot is 2, so it's now "your pick"
     expect(await screen.findByText('Your pick!')).toBeInTheDocument()
     const board = screen.getAllByRole('table')[0]
-    expect(within(board).getByText('Josh Allen')).toBeInTheDocument()
+    expect(within(board).getByText('J. Allen')).toBeInTheDocument()
   })
 
   it('adding a player to the queue shows them under the Queue tab', async () => {
@@ -213,7 +213,7 @@ describe('DraftRoom', () => {
 
     await screen.findByText(/Team 1 is on the clock/)
     const board = screen.getAllByRole('table')[0]
-    expect(within(board).queryByText('Josh Allen')).not.toBeInTheDocument()
+    expect(within(board).queryByText('J. Allen')).not.toBeInTheDocument()
   })
 
   it('a Sleeper-synced draft hides manual controls and shows the badge', async () => {
@@ -242,13 +242,15 @@ describe('DraftRoom', () => {
       })
       expect(screen.getByText('Synced from Sleeper')).toBeInTheDocument()
       const board = () => screen.getAllByRole('table')[0]
-      expect(within(board()).queryByText('Josh Allen')).not.toBeInTheDocument()
+      expect(within(board()).queryByText('J. Allen')).not.toBeInTheDocument()
 
+      // The poll runs every 2s now; advancing well past one tick keeps this
+      // test about "a pick arrives", not about the exact cadence.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5000)
       })
 
-      expect(within(board()).getByText('Josh Allen')).toBeInTheDocument()
+      expect(within(board()).getByText('J. Allen')).toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }

@@ -1,0 +1,151 @@
+.exposure-page {
+  padding: 16px 20px 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.exposure-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.exposure-search {
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #33322f);
+  background: var(--surface-2, #1e1e1c);
+  color: var(--text-primary, #fff);
+  min-width: 200px;
+}
+
+.exposure-owned-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text-secondary, #c3c2b7);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.exposure-status,
+.exposure-error {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary, #c3c2b7);
+}
+
+.exposure-error {
+  color: #e66767;
+}
+
+.exposure-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.exposure-table th,
+.exposure-table td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border, #33322f);
+}
+
+.exposure-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #898781);
+  font-weight: 600;
+}
+
+.exposure-rank,
+.exposure-adp {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #898781);
+}
+
+/* A magnitude gradient across the whole row, not just the shares cell --
+   the point is to be able to scan straight down the page and see where
+   your exposure concentrates. Reuses DeltaChip's "value" ramp verbatim
+   (components/delta.css): that's already a validated single-hue
+   light-to-dark sequential scale, and (per that file's own note) reads
+   consistently in both themes with no separate dark-mode override needed.
+   Zero shares gets no rule at all, so it falls through to the table's
+   plain default styling. */
+.exposure-table tr[data-share-level='1'] {
+  background: #c6dcf9;
+  color: #000;
+}
+.exposure-table tr[data-share-level='2'] {
+  background: #9cc0f2;
+  color: #000;
+}
+.exposure-table tr[data-share-level='3'] {
+  background: #6a9ae4;
+  color: #000;
+}
+.exposure-table tr[data-share-level='4'] {
+  background: #3a6fc4;
+  color: #fff;
+}
+.exposure-table tr[data-share-level='5'] {
+  background: #1e4a8c;
+  color: #fff;
+}
+
+/* Position tags and delta chips carry their own colour regardless of row
+   highlight -- only the rank number, ADP number and team text should pick
+   up the row's ink override. */
+.exposure-table tr[data-share-level] .exposure-rank,
+.exposure-table tr[data-share-level] .exposure-adp {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.exposure-shares-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.exposure-shares-input {
+  width: 40px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  padding: 3px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border, #33322f);
+  background: var(--surface-2, #1e1e1c);
+  color: var(--text-primary, #fff);
+}
+
+.exposure-shares-step {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid var(--border, #33322f);
+  background: var(--surface-2, #1e1e1c);
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+}
+
+.exposure-shares-step:hover:not(:disabled) {
+  background: var(--surface-1, #1a1a19);
+}
+
+.exposure-shares-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

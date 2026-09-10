@@ -1,9 +1,7 @@
-import ssl
-
 import httpx
-import truststore
 from sqlalchemy.orm import Session
 
+from app.ingest.http import new_client
 from app.models import AdpEntry
 
 PROJECTIONS_URL_TEMPLATE = "https://api.sleeper.com/projections/nfl/{season}"
@@ -16,12 +14,6 @@ PLATFORM = "sleeper"
 UNRANKED_SENTINEL = 999.0
 
 
-def _new_client() -> httpx.Client:
-    # See app/ingest/sleeper.py::_new_client for why this isn't httpx's default verify.
-    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    return httpx.Client(timeout=30, verify=ctx)
-
-
 def fetch_raw_projections(
     season: str,
     positions: list[str] = DEFAULT_POSITIONS,
@@ -29,7 +21,7 @@ def fetch_raw_projections(
     client: httpx.Client | None = None,
 ) -> list[dict]:
     owns_client = client is None
-    client = client or _new_client()
+    client = client or new_client()
     try:
         params = [("season_type", season_type), ("order_by", "pts_ppr")]
         params += [("position[]", position) for position in positions]

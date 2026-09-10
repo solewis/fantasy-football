@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import { useState } from 'react'
 
 import type { DraftStatus } from '../../api/draft'
@@ -15,7 +17,13 @@ const ACTIVE_DRAFT_KEY = 'fantasy-draft-app:activeDraftId'
  * draft is discoverable via GET /drafts?league_id=, no client-side pointer
  * needed there).
  */
-export function DraftPage() {
+interface DraftPageProps {
+  /** Rendered alongside this page's own controls, so a caller's "back" button
+   * shares the draft header row instead of costing a line above it. */
+  backControl?: ReactNode
+}
+
+export function DraftPage({ backControl }: DraftPageProps) {
   const [draftId, setDraftId] = useState<number | null>(() => {
     const stored = localStorage.getItem(ACTIVE_DRAFT_KEY)
     return stored ? Number(stored) : null
@@ -39,7 +47,14 @@ export function DraftPage() {
   }
 
   if (draftId === null) {
-    return <DraftSetupForm onCreated={handleCreated} />
+    // The setup form has no draft header to hang the back control on, so it
+    // gets its own row here.
+    return (
+      <div className="draft-setup-wrapper">
+        {backControl}
+        <DraftSetupForm onCreated={handleCreated} />
+      </div>
+    )
   }
 
   const newDraftControl = confirmingNewDraft ? (
@@ -60,7 +75,12 @@ export function DraftPage() {
   return (
     <DraftRoom
       draftId={draftId}
-      headerActions={newDraftControl}
+      headerActions={
+        <>
+          {backControl}
+          {newDraftControl}
+        </>
+      }
       onUnavailable={handleUnavailable}
     />
   )

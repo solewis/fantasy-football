@@ -1,0 +1,220 @@
+.sources-page {
+  padding: 16px 20px 20px;
+  max-width: 1240px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sources-toolbar {
+  margin-bottom: 12px;
+}
+
+.sources-wizard {
+  border: 1px solid var(--border, #33322f);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sources-wizard-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sources-name-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.sources-warning {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary, #c3c2b7);
+}
+
+.sources-mapper-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.sources-mapper-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.sources-mapper-header {
+  color: var(--text-muted, #898781);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sources-mapper-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.sources-mapper-count {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted, #898781);
+}
+
+.sources-table,
+.sources-sample {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.sources-table th,
+.sources-table td,
+.sources-sample th,
+.sources-sample td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border, #33322f);
+}
+
+.sources-table th,
+.sources-sample th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #898781);
+  font-weight: 600;
+}
+
+.sources-tag,
+.sources-derived {
+  margin-left: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #898781);
+  border: 1px solid var(--border, #33322f);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.sources-review-link {
+  border: none;
+  background: transparent;
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.sources-all-matched {
+  color: var(--text-muted, #898781);
+  font-size: 12px;
+}
+
+.sources-review {
+  max-width: 620px;
+}
+
+.sources-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sources-review-note,
+.sources-review-progress {
+  font-size: 12px;
+  color: var(--text-muted, #898781);
+}
+
+.sources-review-name {
+  font-size: 16px;
+  margin: 12px 0;
+}
+
+.sources-candidates {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.sources-candidate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  position: relative;
+}
+
+.sources-candidate:hover,
+.sources-candidate.selected {
+  border-color: var(--border, #33322f);
+  background: var(--surface-2, #1e1e1c);
+}
+
+.sources-candidate-index {
+  min-width: 18px;
+  color: var(--text-muted, #898781);
+  font-size: 11px;
+}
+
+.sources-candidate-meta,
+.sources-candidate-score {
+  color: var(--text-muted, #898781);
+  font-size: 12px;
+}
+
+.sources-candidate-score {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A magnitude, in one recessive hue, with the number beside it. */
+.sources-score-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  max-width: 100%;
+  background: var(--text-secondary, #c3c2b7);
+  opacity: 0.4;
+}
+
+.sources-review-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sources-note {
+  font-size: 12px;
+  color: var(--text-muted, #898781);
+  max-width: 70ch;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}

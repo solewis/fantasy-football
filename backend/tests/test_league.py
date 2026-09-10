@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -5,7 +7,7 @@ from sqlalchemy.orm import Session
 from app import league
 from app.db import Base
 from app.ingest import sleeper_league
-from app.models import League
+from app.models import League, RankSet
 
 
 def make_session() -> Session:
@@ -33,30 +35,30 @@ def stub_sleeper(monkeypatch, meta=None, team_names=None):
     )
 
 
-def test_lookup_sleeper_league_returns_preview(monkeypatch):
+def test_lookup_league_returns_preview(monkeypatch):
     stub_sleeper(monkeypatch)
 
-    meta = league.lookup_sleeper_league("999")
+    meta = league.lookup_league("sleeper", "999")
 
     assert meta["name"] == "Sunday Funday"
     assert meta["suggested_format"] == "half_ppr"
 
 
-def test_lookup_sleeper_league_raises_on_fetch_failure(monkeypatch):
+def test_lookup_league_raises_on_fetch_failure(monkeypatch):
     def boom(league_id):
         raise sleeper_league.SleeperFetchError("no such league")
 
     monkeypatch.setattr(sleeper_league, "fetch_raw_league", boom)
 
     with pytest.raises(league.LeagueError):
-        league.lookup_sleeper_league("bad-id")
+        league.lookup_league("sleeper", "bad-id")
 
 
 def test_create_league_persists_settings_and_team_names(monkeypatch):
     session = make_session()
     stub_sleeper(monkeypatch, team_names={"1": "Bourrow my Toe"})
 
-    created = league.create_league(session, "999", format="half_ppr", rank_set_id=None)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr", rank_set_id=None)
 
     assert created.platform == "sleeper"
     assert created.platform_league_id == "999"
@@ -87,13 +89,13 @@ def test_create_league_raises_on_fetch_failure(monkeypatch):
     monkeypatch.setattr(sleeper_league, "fetch_raw_league", boom)
 
     with pytest.raises(league.LeagueError):
-        league.create_league(session, "bad-id", format="half_ppr")
+        league.create_league(session, "sleeper", "bad-id", format="half_ppr")
 
 
 def test_sync_league_updates_settings_but_not_format_or_rank_set(monkeypatch):
     session = make_session()
     stub_sleeper(monkeypatch)
-    created = league.create_league(session, "999", format="half_ppr", rank_set_id=None)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr", rank_set_id=None)
 
     stub_sleeper(
         monkeypatch,
@@ -126,29 +128,64 @@ def test_sync_unknown_league_raises():
 def test_update_format(monkeypatch):
     session = make_session()
     stub_sleeper(monkeypatch)
-    created = league.create_league(session, "999", format="half_ppr")
+    created = league.create_league(session, "sleeper", "999", format="half_ppr")
 
     updated = league.update_format(session, created.id, "ppr")
 
     assert updated.format == "ppr"
 
 
+def make_rank_set(session, platform: str = "sleeper", scope: str = "overall") -> RankSet:
+    rank_set = RankSet(
+        name=f"Main {scope}",
+        platform=platform,
+        season="2026",
+        format="half_ppr",
+        scope=scope,
+        created_at=datetime.now(UTC),
+    )
+    session.add(rank_set)
+    session.commit()
+    session.refresh(rank_set)
+    return rank_set
+
+
 def test_update_rank_set_can_set_and_clear(monkeypatch):
     session = make_session()
     stub_sleeper(monkeypatch)
-    created = league.create_league(session, "999", format="half_ppr")
+    created = league.create_league(session, "sleeper", "999", format="half_ppr")
+    rank_set = make_rank_set(session, platform="sleeper")
 
-    league.update_rank_set(session, created.id, 42)
-    assert session.get(League, created.id).rank_set_id == 42
+    league.update_rank_set(session, created.id, rank_set.id)
+    assert session.get(League, created.id).rank_set_id == rank_set.id
 
     league.update_rank_set(session, created.id, None)
     assert session.get(League, created.id).rank_set_id is None
 
 
+def test_update_rank_set_raises_on_unknown_rank_set(monkeypatch):
+    session = make_session()
+    stub_sleeper(monkeypatch)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr")
+
+    with pytest.raises(league.LeagueError):
+        league.update_rank_set(session, created.id, 999)
+
+
+def test_update_rank_set_raises_on_platform_mismatch(monkeypatch):
+    session = make_session()
+    stub_sleeper(monkeypatch)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr")
+    espn_rank_set = make_rank_set(session, platform="espn")
+
+    with pytest.raises(league.LeagueError):
+        league.update_rank_set(session, created.id, espn_rank_set.id)
+
+
 def test_delete_league_removes_it(monkeypatch):
     session = make_session()
     stub_sleeper(monkeypatch)
-    created = league.create_league(session, "999", format="half_ppr")
+    created = league.create_league(session, "sleeper", "999", format="half_ppr")
 
     league.delete_league(session, created.id)
 
@@ -162,7 +199,7 @@ def test_delete_league_cascades_its_drafts_picks_and_queue(monkeypatch):
 
     session = make_session()
     stub_sleeper(monkeypatch)
-    created = league.create_league(session, "999", format="half_ppr")
+    created = league.create_league(session, "sleeper", "999", format="half_ppr")
     session.add(
         PlatformPlayer(
             platform="sleeper", platform_player_id="1", name="Josh Allen", position="QB", team="BUF"
@@ -198,9 +235,33 @@ def test_delete_unknown_league_raises():
 def test_list_leagues_ordered_by_creation(monkeypatch):
     session = make_session()
     stub_sleeper(monkeypatch)
-    first = league.create_league(session, "111", format="half_ppr")
-    second = league.create_league(session, "222", format="ppr")
+    first = league.create_league(session, "sleeper", "111", format="half_ppr")
+    second = league.create_league(session, "sleeper", "222", format="ppr")
 
     rows = league.list_leagues(session)
 
     assert [row.id for row in rows] == [first.id, second.id]
+
+
+def test_update_rank_set_rejects_a_positional_set(monkeypatch):
+    """A league drafts every position, so it needs a whole-board list. A
+    positional set is an ingredient for building one, not a substitute.
+    """
+    session = make_session()
+    stub_sleeper(monkeypatch)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr", rank_set_id=None)
+    wr_set = make_rank_set(session, scope="WR")
+
+    with pytest.raises(league.LeagueError):
+        league.update_rank_set(session, created.id, wr_set.id)
+
+
+def test_update_rank_set_accepts_an_overall_set(monkeypatch):
+    session = make_session()
+    stub_sleeper(monkeypatch)
+    created = league.create_league(session, "sleeper", "999", format="half_ppr", rank_set_id=None)
+    overall = make_rank_set(session, scope="overall")
+
+    updated = league.update_rank_set(session, created.id, overall.id)
+
+    assert updated.rank_set_id == overall.id

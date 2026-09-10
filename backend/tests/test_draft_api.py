@@ -86,6 +86,25 @@ def test_get_draft_status_for_unknown_id_is_404(api_client):
     assert response.status_code == 404
 
 
+def test_delete_draft_removes_it(api_client):
+    client, session_factory = api_client
+    seed(session_factory)
+    draft_id = create_draft(client)["draft"]["id"]
+
+    response = client.delete(f"/drafts/{draft_id}")
+
+    assert response.status_code == 204
+    assert client.get(f"/drafts/{draft_id}").status_code == 404
+
+
+def test_delete_draft_unknown_id_is_400(api_client):
+    client, _session_factory = api_client
+
+    response = client.delete("/drafts/999")
+
+    assert response.status_code == 400
+
+
 def test_post_pick_then_status_reflects_it(api_client):
     client, session_factory = api_client
     seed(session_factory)

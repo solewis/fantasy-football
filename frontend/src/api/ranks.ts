@@ -5,12 +5,25 @@ export interface RankRow {
   position: string | null
   team: string | null
   adp: number | null
+  /** Tier this player falls in, or null when the set has no tiers. */
+  tier: number | null
+  /** Whether a tier break follows this player, and how hard the drop is. */
+  break_after: 'major' | 'minor' | null
+  /** A personal lean this rank order can't express on its own. */
+  flag: 'target' | 'fade' | null
 }
 
 export interface RanksScope {
+  platform?: string
   season: string
   format: string
+  /** Filters rank sets to one scope; omit for all of them. */
+  scope?: RankSetScope
 }
+
+/** "overall" or one of QB/RB/WR/TE. Only an overall set can be assigned to a
+ * league; the positional ones are ingredients for building one. */
+export type RankSetScope = 'overall' | 'QB' | 'RB' | 'WR' | 'TE'
 
 export interface RankSetSummary {
   id: number
@@ -18,6 +31,12 @@ export interface RankSetSummary {
   platform: string
   season: string
   format: string
+  scope: RankSetScope
+  /** With multiple named lists now allowed per scope, this is the one that
+   * gets used automatically -- by the overall builder and draft room for a
+   * positional scope, and by an ad-hoc draft with no League to assign a
+   * rank_set_id from for the overall scope. */
+  is_active: boolean
   player_count: number
 }
 
@@ -25,7 +44,16 @@ export interface CreateRankSetParams {
   name: string
   season: string
   format: string
+  platform?: string
+  scope?: RankSetScope
   seed_from_adp?: boolean
+}
+
+export interface RankEntryInput {
+  platform_player_id: string
+  tier?: number | null
+  break_after?: 'major' | 'minor' | null
+  flag?: 'target' | 'fade' | null
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000'
@@ -53,17 +81,29 @@ export async function fetchRanks(scope: RanksScope): Promise<RankRow[]> {
     season: scope.season,
     format: scope.format,
   })
+  if (scope.platform) query.set('platform', scope.platform)
   const response = await fetch(`${API_BASE}/ranks?${query.toString()}`)
   return parseOrThrow(response, 'Fetching ranks')
 }
 
+export interface ListRankSetsParams {
+  platform?: string
+  season: string
+  /** Omit to list rank sets across every format -- the Exposure page has no
+   * format concept of its own to filter by, and wants every rank list a
+   * user could pick as an ordering source regardless of which format it was
+   * built under. */
+  format?: string
+  scope?: RankSetScope
+}
+
 export async function fetchRankSets(
-  scope: RanksScope,
+  params: ListRankSetsParams,
 ): Promise<RankSetSummary[]> {
-  const query = new URLSearchParams({
-    season: scope.season,
-    format: scope.format,
-  })
+  const query = new URLSearchParams({ season: params.season })
+  if (params.platform) query.set('platform', params.platform)
+  if (params.format) query.set('format', params.format)
+  if (params.scope) query.set('scope', params.scope)
   const response = await fetch(`${API_BASE}/rank-sets?${query.toString()}`)
   return parseOrThrow(response, 'Fetching rank sets')
 }
@@ -91,6 +131,19 @@ export async function renameRankSet(
   return parseOrThrow(response, 'Renaming rank set')
 }
 
+/** Marks a positional rank set as the one used for its position by the
+ * overall builder and the draft room, deactivating whichever set held that
+ * spot before. Rejected for an overall set -- there's no sibling to
+ * disambiguate from. */
+export async function activateRankSet(
+  rankSetId: number,
+): Promise<RankSetSummary> {
+  const response = await fetch(`${API_BASE}/rank-sets/${rankSetId}/activate`, {
+    method: 'POST',
+  })
+  return parseOrThrow(response, 'Setting active rank set')
+}
+
 export async function deleteRankSet(rankSetId: number): Promise<void> {
   const response = await fetch(`${API_BASE}/rank-sets/${rankSetId}`, {
     method: 'DELETE',
@@ -105,14 +158,17 @@ export async function fetchRanksForSet(rankSetId: number): Promise<RankRow[]> {
   return parseOrThrow(response, 'Fetching ranks')
 }
 
+/** Full replace, always -- an editor only ever has one complete current order.
+ * Tiers ride along on each entry rather than being saved separately, since
+ * they're a grouping over this exact order. */
 export async function saveRanksForSet(
   rankSetId: number,
-  platformPlayerIds: string[],
+  entries: RankEntryInput[],
 ): Promise<{ count: number }> {
   const response = await fetch(`${API_BASE}/rank-sets/${rankSetId}/ranks`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ platform_player_ids: platformPlayerIds }),
+    body: JSON.stringify({ entries }),
   })
   return parseOrThrow(response, 'Saving ranks')
 }

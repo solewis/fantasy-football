@@ -10,6 +10,10 @@ const statusResponse = {
     last_synced_at: '2026-08-19T11:00:00Z',
     record_count: 6799,
   },
+  espn_players: {
+    last_synced_at: '2026-08-19T09:00:00Z',
+    record_count: 1027,
+  },
 }
 
 function jsonResponse(body: unknown) {
@@ -21,22 +25,38 @@ beforeEach(() => {
 })
 
 describe('SyncPanel', () => {
-  it('renders status once loaded', async () => {
+  it('renders Sleeper status once loaded, with no ESPN row', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse(statusResponse)),
     )
 
-    render(<SyncPanel season="2026" onSyncComplete={vi.fn()} />)
+    render(
+      <SyncPanel season="2026" platform="sleeper" onSyncComplete={vi.fn()} />,
+    )
 
     const playersMeta = await screen.findByText(/12221 players/)
     expect(playersMeta).toBeInTheDocument()
     expect(screen.getByText(/6799 rows/)).toBeInTheDocument()
+    expect(screen.queryByText('ESPN Players')).not.toBeInTheDocument()
 
     // Hover tooltip carries the exact timestamp -- regression coverage for the
     // "says 6 hours in the future" bug (a naive/offset-less datetime from the
     // backend gets misread as local time by the browser).
     expect(playersMeta.title).toContain('2026')
+  })
+
+  it('renders ESPN status once loaded, with no Sleeper rows', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(statusResponse)),
+    )
+
+    render(<SyncPanel season="2026" platform="espn" onSyncComplete={vi.fn()} />)
+
+    expect(await screen.findByText(/1027 players/)).toBeInTheDocument()
+    expect(screen.queryByText('Players')).not.toBeInTheDocument()
+    expect(screen.queryByText(/ADP \(/)).not.toBeInTheDocument()
   })
 
   it('triggers a players sync and calls onSyncComplete on success', async () => {
@@ -52,7 +72,13 @@ describe('SyncPanel', () => {
       )
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<SyncPanel season="2026" onSyncComplete={onSyncComplete} />)
+    render(
+      <SyncPanel
+        season="2026"
+        platform="sleeper"
+        onSyncComplete={onSyncComplete}
+      />,
+    )
     await screen.findByText(/12221 players/)
 
     fireEvent.click(screen.getByRole('button', { name: 'Sync players' }))
@@ -80,7 +106,13 @@ describe('SyncPanel', () => {
       )
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<SyncPanel season="2026" onSyncComplete={onSyncComplete} />)
+    render(
+      <SyncPanel
+        season="2026"
+        platform="sleeper"
+        onSyncComplete={onSyncComplete}
+      />,
+    )
     await screen.findByText(/6799 rows/)
 
     fireEvent.click(screen.getByRole('button', { name: 'Sync ADP' }))
@@ -91,6 +123,40 @@ describe('SyncPanel', () => {
     expect(onSyncComplete).toHaveBeenCalledTimes(1)
     const lastCall = fetchMock.mock.calls.at(-1) as [string, RequestInit]
     expect(lastCall[0]).toContain('/sync/adp')
+    expect(lastCall[1]).toMatchObject({ method: 'POST' })
+  })
+
+  it('triggers an ESPN players sync and calls onSyncComplete on success', async () => {
+    const onSyncComplete = vi.fn()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(statusResponse))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          last_synced_at: '2026-08-19T12:00:00Z',
+          record_count: 1030,
+          adp_record_count: 1030,
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <SyncPanel
+        season="2026"
+        platform="espn"
+        onSyncComplete={onSyncComplete}
+      />,
+    )
+    await screen.findByText(/1027 players/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync ESPN players' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/1030 players/)).toBeInTheDocument()
+    })
+    expect(onSyncComplete).toHaveBeenCalledTimes(1)
+    const lastCall = fetchMock.mock.calls.at(-1) as [string, RequestInit]
+    expect(lastCall[0]).toContain('/sync/espn-players')
     expect(lastCall[1]).toMatchObject({ method: 'POST' })
   })
 
@@ -106,7 +172,13 @@ describe('SyncPanel', () => {
       })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<SyncPanel season="2026" onSyncComplete={onSyncComplete} />)
+    render(
+      <SyncPanel
+        season="2026"
+        platform="sleeper"
+        onSyncComplete={onSyncComplete}
+      />,
+    )
     await screen.findByText(/12221 players/)
 
     fireEvent.click(screen.getByRole('button', { name: 'Sync players' }))

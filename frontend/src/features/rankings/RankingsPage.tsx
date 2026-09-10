@@ -11,15 +11,27 @@ import {
   type RankRow,
   type RankSetSummary,
 } from '../../api/ranks'
+import type { SupportedPlatform } from '../../components/PlatformTabs'
 import { FORMATS, SEASON } from '../../lib/formats'
-import { isBelowMidpoint, reorderList } from '../../lib/reorder'
-import { PositionTag } from '../players/PositionTag'
+import { reorderList } from '../../lib/reorder'
+import { RankingsTable } from './RankingsTable'
 import './rankings.css'
 
 type Source = 'saved' | 'adp' | null
 
-export function RankingsPage() {
-  const [format, setFormat] = useState('half_ppr')
+interface RankingsPageProps {
+  platform: SupportedPlatform
+  format: string
+}
+
+/** The Edit view: the drag-and-drop rank table.
+ *
+ * platform/format are props rather than state because all three Rankings
+ * sub-views share them -- picking ESPN in Sources and then switching to Edit
+ * should stay on ESPN. Everything below that (which set is open, the working
+ * list, drag state) is local, since it means nothing to the other views.
+ */
+export function RankingsPage({ platform, format }: RankingsPageProps) {
   const [rankSets, setRankSets] = useState<RankSetSummary[]>([])
   const [selectedSetId, setSelectedSetId] = useState<number | null>(null)
   const [workingList, setWorkingList] = useState<RankRow[]>([])
@@ -33,12 +45,12 @@ export function RankingsPage() {
   // effect -- these two keys only get written from a .then()/.finally()
   // callback (an async continuation, not the effect's synchronous body), so
   // there's nothing to reset up front and no risk of a cascading render.
-  const [rankSetsLoadedFormat, setRankSetsLoadedFormat] = useState<
-    string | null
-  >(null)
-  const rankSetsLoaded = rankSetsLoadedFormat === format
+  const [rankSetsLoadedKey, setRankSetsLoadedKey] = useState<string | null>(
+    null,
+  )
+  const rankSetsLoaded = rankSetsLoadedKey === `${platform}:${format}`
   const [ranksLoadedKey, setRanksLoadedKey] = useState<string | null>(null)
-  const currentRanksKey = `${selectedSetId ?? 'adp'}:${format}`
+  const currentRanksKey = `${selectedSetId ?? 'adp'}:${platform}:${format}`
   const loading = !rankSetsLoaded || ranksLoadedKey !== currentRanksKey
 
   const [creatingName, setCreatingName] = useState<string | null>(null)
@@ -56,14 +68,16 @@ export function RankingsPage() {
   const lastHoverKeyRef = useRef<string | null>(null)
 
   const selectedSet = rankSets.find((s) => s.id === selectedSetId) ?? null
-
-  function selectFormat(next: string) {
-    setSaveMessage(null)
-    setCreatingName(null)
-    setRenamingName(null)
-    setConfirmingDelete(false)
-    setFormat(next)
-  }
+  // undefined (no filter) for an overall set; the scope itself for a
+  // positional one. Without this, ADP order/fallback pulled every position
+  // regardless of which set was open -- "Load from ADP" (or even just an
+  // empty positional set falling back automatically) on "My QBs" replaced
+  // its 29 quarterbacks with hundreds of players across every position, which
+  // is indistinguishable from the whole list having been deleted.
+  const selectedSetPosition =
+    selectedSet && selectedSet.scope !== 'overall'
+      ? selectedSet.scope
+      : undefined
 
   // Effect A: the list of rank sets for this format. Never touches
   // workingList -- that's Effect B's job, keyed on selectedSetId, so the two
@@ -75,7 +89,7 @@ export function RankingsPage() {
   useEffect(() => {
     let cancelled = false
 
-    fetchRankSets({ season: SEASON, format })
+    fetchRankSets({ platform, season: SEASON, format })
       .then((sets) => {
         if (cancelled) return
         setRankSets(sets)
@@ -92,24 +106,24 @@ export function RankingsPage() {
           )
       })
       .finally(() => {
-        if (!cancelled) setRankSetsLoadedFormat(format)
+        if (!cancelled) setRankSetsLoadedKey(`${platform}:${format}`)
       })
 
     return () => {
       cancelled = true
     }
-  }, [format])
+  }, [platform, format])
 
   // Effect B: the actual rank content for whichever set is selected (or an
   // ADP preview if none is). Waits for Effect A to finish at least once.
   useEffect(() => {
     if (!rankSetsLoaded) return
     let cancelled = false
-    const key = `${selectedSetId ?? 'adp'}:${format}`
+    const key = `${selectedSetId ?? 'adp'}:${platform}:${format}`
 
     async function load() {
       if (selectedSetId === null) {
-        const rows = await fetchPlayers({ season: SEASON, format })
+        const rows = await fetchPlayers({ platform, season: SEASON, format })
         if (cancelled) return
         setWorkingList(rows)
         setSource('adp')
@@ -123,7 +137,12 @@ export function RankingsPage() {
         setSource('saved')
         return
       }
-      const adpRows = await fetchPlayers({ season: SEASON, format })
+      const adpRows = await fetchPlayers({
+        platform,
+        season: SEASON,
+        format,
+        position: selectedSetPosition,
+      })
       if (cancelled) return
       setWorkingList(adpRows)
       setSource('adp')
@@ -143,18 +162,23 @@ export function RankingsPage() {
     return () => {
       cancelled = true
     }
-    // format is included so switching between two formats that both have
-    // zero rank sets (selectedSetId staying null both times) still refetches
-    // the ADP preview for the new format, instead of leaving the old one on
-    // screen.
-  }, [selectedSetId, format, rankSetsLoaded])
+    // platform/format are included so switching between two platforms or
+    // formats that both have zero rank sets (selectedSetId staying null both
+    // times) still refetches the ADP preview for the new scope, instead of
+    // leaving the old one on screen.
+  }, [selectedSetId, platform, format, rankSetsLoaded, selectedSetPosition])
 
   async function handleLoadFromAdp() {
     setAdpLoading(true)
     setError(null)
     setSaveMessage(null)
     try {
-      const rows = await fetchPlayers({ season: SEASON, format })
+      const rows = await fetchPlayers({
+        platform,
+        season: SEASON,
+        format,
+        position: selectedSetPosition,
+      })
       setWorkingList(rows)
       setSource('adp')
     } catch (err) {
@@ -171,11 +195,19 @@ export function RankingsPage() {
     try {
       const result = await saveRanksForSet(
         selectedSetId,
-        workingList.map((row) => row.platform_player_id),
+        // break_after/flag ride along even though this view doesn't edit
+        // them: the save is a full replace, so dropping them here would
+        // silently wipe every tier break and target/fade the builder set.
+        workingList.map((row) => ({
+          platform_player_id: row.platform_player_id,
+          tier: row.tier,
+          break_after: row.break_after,
+          flag: row.flag,
+        })),
       )
       setSaveMessage(`Saved ${result.count} ranks`)
       setSource('saved')
-      const sets = await fetchRankSets({ season: SEASON, format })
+      const sets = await fetchRankSets({ platform, season: SEASON, format })
       setRankSets(sets)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save ranks')
@@ -200,6 +232,7 @@ export function RankingsPage() {
         name: creatingName,
         season: SEASON,
         format,
+        platform,
         seed_from_adp: true,
       })
       setRankSets((prev) => [...prev, created])
@@ -309,19 +342,6 @@ export function RankingsPage() {
   return (
     <div className="rankings-page">
       <div className="rankings-toolbar">
-        <select
-          className="rankings-format"
-          value={format}
-          onChange={(e) => selectFormat(e.target.value)}
-          aria-label="Scoring format"
-        >
-          {FORMATS.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-
         {rankSets.length > 0 && (
           <select
             className="rankings-format"
@@ -331,7 +351,8 @@ export function RankingsPage() {
           >
             {rankSets.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name} ({s.player_count})
+                {s.scope === 'overall' ? s.name : `${s.name} · ${s.scope}`} (
+                {s.player_count})
               </option>
             ))}
           </select>
@@ -441,81 +462,15 @@ export function RankingsPage() {
             No players available for this format.
           </p>
         ) : (
-          <table className="rankings-table">
-            <thead>
-              <tr>
-                <th>Rk</th>
-                <th>ADP</th>
-                <th>Name</th>
-                <th>Team</th>
-                <th>Move</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workingList.map((row, index) => (
-                <tr
-                  key={row.platform_player_id}
-                  draggable
-                  className={
-                    draggedId === row.platform_player_id ? 'dragging' : ''
-                  }
-                  onDragStart={() => startDrag(row.platform_player_id)}
-                  onDragEnd={endDrag}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    const insertAfter = isBelowMidpoint(e.clientY, rect)
-                    handleDragOver(row.platform_player_id, insertAfter)
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    endDrag()
-                  }}
-                >
-                  <td>{index + 1}</td>
-                  <td>{row.adp !== null ? row.adp.toFixed(1) : '—'}</td>
-                  <td>
-                    <PositionTag position={row.position} />
-                    <span className="player-name">{row.name}</span>
-                  </td>
-                  <td>{row.team ?? '—'}</td>
-                  <td className="rankings-move-cell">
-                    <button
-                      type="button"
-                      className="rankings-move-btn"
-                      onClick={() => moveUp(index)}
-                      disabled={index === 0}
-                      aria-label={`Move ${row.name} up`}
-                    >
-                      ▲
-                    </button>
-                    <button
-                      type="button"
-                      className="rankings-move-btn"
-                      onClick={() => moveDown(index)}
-                      disabled={index === workingList.length - 1}
-                      aria-label={`Move ${row.name} down`}
-                    >
-                      ▼
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              <tr
-                className="rankings-end-zone"
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  handleDragOver(null, false)
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  endDrag()
-                }}
-              >
-                <td colSpan={5}>Drop here to move to the end</td>
-              </tr>
-            </tbody>
-          </table>
+          <RankingsTable
+            rows={workingList}
+            draggedId={draggedId}
+            onDragStartRow={startDrag}
+            onDragEndRow={endDrag}
+            onDragOverRow={handleDragOver}
+            onMoveUp={moveUp}
+            onMoveDown={moveDown}
+          />
         )}
       </div>
     </div>
